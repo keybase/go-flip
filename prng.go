@@ -61,7 +61,11 @@ func (p *PRNG) Read(out []byte) int {
 	return nRead
 }
 
-func (p *PRNG) NextModN(n *big.Int) *big.Int {
+func (p *PRNG) Big(modulus *big.Int) *big.Int {
+
+	sign := modulus.Sign()
+	var n big.Int
+	n.Abs(modulus)
 	bits := n.BitLen()
 
 	// For a modulus n, we want to clear out the bits that are
@@ -85,9 +89,23 @@ func (p *PRNG) NextModN(n *big.Int) *big.Int {
 		var x big.Int
 		x.SetBytes(buf)
 		x.And(&x, &mask)
-		if x.Cmp(n) < 0 {
-			return &x
+		if x.Cmp(&n) < 0 {
+			return x.Mul(&x, big.NewInt(int64(sign)))
 		}
 	}
 	return nil
+}
+
+func (p *PRNG) Int(modulus int64) int64 {
+	return p.Big(big.NewInt(modulus)).Int64()
+}
+
+func (p *PRNG) Bool() bool {
+	var b [1]byte
+	p.Read(b[:])
+	var ret bool
+	if b[0]&0x1 == byte(1) {
+		ret = true
+	}
+	return ret
 }

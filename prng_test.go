@@ -20,8 +20,8 @@ func TestPRNG(t *testing.T) {
 	}
 
 	for _, a := range expected {
-		b := prng.NextModN(big.NewInt(int64(65)))
-		require.Equal(t, a, int(b.Uint64()))
+		b := prng.Int(65)
+		require.Equal(t, a, int(b))
 	}
 
 	n := "919209803230948230498223094203977777434098123"
@@ -41,9 +41,18 @@ func TestPRNG(t *testing.T) {
 	}
 
 	for _, a := range bigExpected {
-		b := prng.NextModN(&ni)
+		b := prng.Big(&ni)
 		var ai big.Int
 		ai.SetString(a, 10)
 		require.Equal(t, b.Cmp(&ai), 0)
+	}
+
+	coinsExpected := []bool{
+		true, true, true, false, true, true, true, false, true, false, false, true,
+		false, false, true, false, true, true, true, false,
+	}
+
+	for _, b := range coinsExpected {
+		require.Equal(t, prng.Bool(), b)
 	}
 }

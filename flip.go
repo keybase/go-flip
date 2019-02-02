@@ -68,8 +68,7 @@ func FlipOneBig(users []UserState, modulus *big.Int) (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := prng.NextModN(modulus)
-	return ret, nil
+	return prng.Big(modulus), nil
 }
 
 func FlipOne(users []UserState, modulus int) (int, error) {
