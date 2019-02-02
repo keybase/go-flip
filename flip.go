@@ -13,7 +13,7 @@ type UserState struct {
 }
 
 func checkReveal(c Secret, r Secret) bool {
-	return c.Hash().Eq(r)
+	return r.Hash().Eq(c)
 }
 
 func checkUser(err *Error, user UserState) {
