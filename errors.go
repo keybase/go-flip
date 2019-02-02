@@ -9,18 +9,23 @@ type Error struct {
 	NoCommitments  []Player
 	NoReveals      []Player
 	BadCommitments []Player
+	Duplicates     []Player
 }
 
-func (e *Error) addNoCommitment(u Player) {
-	e.NoCommitments = append(e.NoCommitments, u)
+func (e *Error) addNoCommitment(p Player) {
+	e.NoCommitments = append(e.NoCommitments, p)
 }
 
-func (e *Error) addNoReveal(u Player) {
-	e.NoReveals = append(e.NoReveals, u)
+func (e *Error) addNoReveal(p Player) {
+	e.NoReveals = append(e.NoReveals, p)
 }
 
-func (e *Error) addBadCommitment(u Player) {
-	e.BadCommitments = append(e.BadCommitments, u)
+func (e *Error) addBadCommitment(p Player) {
+	e.BadCommitments = append(e.BadCommitments, p)
+}
+
+func (e *Error) addDuplicate(p Player) {
+	e.Duplicates = append(e.Duplicates, p)
 }
 
 func (e Error) IsNil() bool {
@@ -44,5 +49,6 @@ func (e Error) Error() string {
 	parts = e.format(parts, "without commitments", e.NoCommitments)
 	parts = e.format(parts, "without reveals", e.NoReveals)
 	parts = e.format(parts, "with bad commitments", e.BadCommitments)
+	parts = e.format(parts, "with duplicated IDs", e.Duplicates)
 	return fmt.Sprintf("Errors in flip: %s", strings.Join(parts, ";"))
 }

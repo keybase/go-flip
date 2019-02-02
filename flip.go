@@ -34,10 +34,16 @@ func checkPlayer(err *Error, user PlayerState) {
 	return
 }
 
-func checkPlayers(users []PlayerState) error {
+func checkPlayers(player []PlayerState) error {
 	var err Error
-	for _, u := range users {
-		checkPlayer(&err, u)
+	d := make(map[Player]bool)
+	for _, p := range player {
+		checkPlayer(&err, p)
+		if d[p.Player] {
+			err.addDuplicate(p.Player)
+		} else {
+			d[p.Player] = true
+		}
 	}
 	if err.IsNil() {
 		return nil
