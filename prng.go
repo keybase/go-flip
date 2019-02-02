@@ -82,11 +82,11 @@ func (p *PRNG) NextModN(n *big.Int) *big.Int {
 	buf := make([]byte, bytes)
 	for {
 		p.Read(buf)
-		x := big.NewInt(0)
+		var x big.Int
 		x.SetBytes(buf)
-		x.And(x, &mask)
+		x.And(&x, &mask)
 		if x.Cmp(n) < 0 {
-			return x
+			return &x
 		}
 	}
 	return nil
