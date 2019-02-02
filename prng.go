@@ -93,7 +93,6 @@ func (p *PRNG) Big(modulus *big.Int) *big.Int {
 			return x.Mul(&x, big.NewInt(int64(sign)))
 		}
 	}
-	return nil
 }
 
 func (p *PRNG) Int(modulus int64) int64 {
