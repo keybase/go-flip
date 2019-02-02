@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
+	"math/big"
 )
 
 type PRNG struct {
@@ -54,4 +55,27 @@ func (p *PRNG) Read(out []byte) int {
 		nRead += tmp
 	}
 	return nRead
+}
+
+func (p *PRNG) NextModN(n *big.Int) *big.Int {
+	bits := n.BitLen()
+
+	// Compute the number of bytes it takes to get that many bits.
+	// but rounding up.
+	bytes := bits / 8
+	if bits%8 != 0 {
+		bytes++
+	}
+
+	buf := make([]byte, bytes)
+	for {
+		p.Read(buf)
+		x := big.NewInt(0)
+		x.SetBytes(buf)
+		x.Rsh(x, uint(bytes*8-bits))
+		if x.Cmp(n) < 0 {
+			return x
+		}
+	}
+	return nil
 }
