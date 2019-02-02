@@ -2,9 +2,16 @@ package flip
 
 import (
 	"math/big"
+	"strings"
 )
 
+// Player is an identifier for a player in the flip game. It can be anything,
+// but must be unique for the game.  You can use user IDs in hex here, for instance.
 type Player string
+
+func (p Player) Key() string {
+	return strings.ToLower(string(p))
+}
 
 type PlayerState struct {
 	Player     Player
@@ -36,13 +43,13 @@ func checkPlayer(err *Error, player PlayerState) {
 
 func checkPlayers(player []PlayerState) error {
 	var err Error
-	d := make(map[Player]bool)
+	d := make(map[string]bool)
 	for _, p := range player {
 		checkPlayer(&err, p)
-		if d[p.Player] {
+		if d[p.Player.Key()] {
 			err.addDuplicate(p.Player)
 		} else {
-			d[p.Player] = true
+			d[p.Player.Key()] = true
 		}
 	}
 	if err.IsNil() {
