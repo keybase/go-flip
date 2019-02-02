@@ -16,7 +16,7 @@ type Broker struct {
 	inputCh       chan Input
 	outputCh      chan Output
 	modulus       *big.Int
-	users         map[Player](*PlayerState)
+	players       map[Player](*PlayerState)
 	commitmentDur time.Duration
 	revealDur     time.Duration
 }
@@ -40,16 +40,16 @@ func (f *Broker) OutputChannel() chan<- Output {
 	return f.outputCh
 }
 
-func NewBroker(modulus *big.Int, users []Player, commitmentDur time.Duration, revealDur time.Duration) *Broker {
+func NewBroker(modulus *big.Int, players []Player, commitmentDur time.Duration, revealDur time.Duration) *Broker {
 	d := make(map[Player]*PlayerState)
-	for _, u := range users {
-		d[u] = nil
+	for _, p := range players {
+		d[p] = nil
 	}
 	return &Broker{
 		inputCh:       make(chan Input),
 		outputCh:      make(chan Output),
 		modulus:       modulus,
-		users:         d,
+		players:       d,
 		commitmentDur: commitmentDur,
 		revealDur:     revealDur,
 	}

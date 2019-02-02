@@ -16,18 +16,18 @@ func checkReveal(c Secret, r Secret) bool {
 	return r.Hash().Eq(c)
 }
 
-func checkPlayer(err *Error, user PlayerState) {
-	if user.Commitment.IsNil() {
-		err.addNoCommitment(user.Player)
+func checkPlayer(err *Error, player PlayerState) {
+	if player.Commitment.IsNil() {
+		err.addNoCommitment(player.Player)
 		return
 	}
-	if user.Reveal.IsNil() {
-		err.addNoReveal(user.Player)
+	if player.Reveal.IsNil() {
+		err.addNoReveal(player.Player)
 		return
 	}
 
-	if !checkReveal(user.Commitment, user.Reveal) {
-		err.addBadCommitment(user.Player)
+	if !checkReveal(player.Commitment, player.Reveal) {
+		err.addBadCommitment(player.Player)
 		return
 	}
 
@@ -52,41 +52,41 @@ func checkPlayers(player []PlayerState) error {
 	return err
 }
 
-func computeSecret(users []PlayerState) Secret {
+func computeSecret(players []PlayerState) Secret {
 	var res Secret
-	for _, u := range users {
-		res.XOR(u.Commitment)
+	for _, p := range players {
+		res.XOR(p.Commitment)
 	}
 	return res
 }
 
-func Flip(users []PlayerState) (*PRNG, error) {
-	err := checkPlayers(users)
+func Flip(players []PlayerState) (*PRNG, error) {
+	err := checkPlayers(players)
 	if err != nil {
 		return nil, err
 	}
-	res := computeSecret(users)
+	res := computeSecret(players)
 	return NewPRNG(res), nil
 }
 
-func FlipOneBig(users []PlayerState, modulus *big.Int) (*big.Int, error) {
-	prng, err := Flip(users)
+func FlipOneBig(players []PlayerState, modulus *big.Int) (*big.Int, error) {
+	prng, err := Flip(players)
 	if err != nil {
 		return nil, err
 	}
 	return prng.Big(modulus), nil
 }
 
-func FlipInt(users []PlayerState, modulus int64) (int64, error) {
-	prng, err := Flip(users)
+func FlipInt(players []PlayerState, modulus int64) (int64, error) {
+	prng, err := Flip(players)
 	if err != nil {
 		return 0, err
 	}
 	return prng.Int(modulus), nil
 }
 
-func FlipBool(users []PlayerState) (bool, error) {
-	prng, err := Flip(users)
+func FlipBool(players []PlayerState) (bool, error) {
+	prng, err := Flip(players)
 	if err != nil {
 		return false, err
 	}

@@ -23,11 +23,11 @@ func makeTestPlayer(b byte) PlayerState {
 }
 
 func TestFlip(t *testing.T) {
-	var users []PlayerState
+	var players []PlayerState
 	for i := 1; i < 20; i++ {
-		users = append(users, makeTestPlayer(byte(i)))
+		players = append(players, makeTestPlayer(byte(i)))
 	}
-	i, err := FlipInt(users, int64(10033))
+	i, err := FlipInt(players, int64(10033))
 	require.NoError(t, err)
 	require.Equal(t, i, int64(5412))
 }
