@@ -1,13 +1,17 @@
 package flip
 
 type TimeoutError struct {
-	missing []string
+	missing []User
 }
 
 type DuplicateCommitmentError struct {
-	u string
+	u User
 }
 
 type DuplicateHashError struct {
-	u string
+	u User
+}
+
+type BadRevealError struct {
+	u User
 }

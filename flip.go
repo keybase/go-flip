@@ -21,8 +21,8 @@ type Input struct {
 }
 
 type Output struct {
-	Err error
-	n   *big.Int
+	Err    error
+	Result *big.Int
 }
 
 type userState struct {
