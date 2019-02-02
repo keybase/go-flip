@@ -1,6 +1,8 @@
 package flip
 
-import ()
+import (
+	"math/big"
+)
 
 type User string
 
@@ -59,4 +61,33 @@ func Flip(users []UserState) (*PRNG, error) {
 	}
 	res := computeSecret(users)
 	return NewPRNG(res), nil
+}
+
+func FlipOneBig(users []UserState, modulus *big.Int) (*big.Int, error) {
+	prng, err := Flip(users)
+	if err != nil {
+		return nil, err
+	}
+	ret := prng.NextModN(modulus)
+	return ret, nil
+}
+
+func FlipOne(users []UserState, modulus int) (int, error) {
+	ret, err := FlipOneBig(users, big.NewInt(int64(modulus)))
+	if err != nil {
+		return 0, nil
+	}
+	return int(ret.Uint64()), nil
+}
+
+func FlipOneCoin(users []UserState) (bool, error) {
+	var ret bool
+	tmp, err := FlipOne(users, 2)
+	if err != nil {
+		return false, err
+	}
+	if tmp > 0 {
+		ret = true
+	}
+	return ret, nil
 }
