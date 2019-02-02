@@ -42,23 +42,35 @@ func (p *PRNG) read(ret []byte) int {
 
 func (p *PRNG) replenish() {
 	if len(p.buf) == 0 {
-		p.buf = hmac.New(sha256.New, p.key[:]).Sum(uint64ToSlice(p.i))
+		hm := hmac.New(sha256.New, p.key[:])
+		hm.Write(uint64ToSlice(p.i))
+		p.buf = hm.Sum(nil)
 		p.i++
 	}
 }
 
 func (p *PRNG) Read(out []byte) int {
 	var nRead int
+	i := 0
 	for nRead < len(out) {
 		p.replenish()
 		tmp := p.read(out[nRead:])
 		nRead += tmp
+		i++
 	}
 	return nRead
 }
 
 func (p *PRNG) NextModN(n *big.Int) *big.Int {
 	bits := n.BitLen()
+
+	// For a modulus n, we want to clear out the bits that are
+	// greater than the greatest bit of n. So compute 2^(ceil(log2(n)))-1,
+	// and AND our candidate with that mask. That'll get rid of the
+	// bits we don't want.
+	var mask big.Int
+	mask.Lsh(big.NewInt(1), uint(bits))
+	mask.Sub(&mask, big.NewInt(1))
 
 	// Compute the number of bytes it takes to get that many bits.
 	// but rounding up.
@@ -72,7 +84,7 @@ func (p *PRNG) NextModN(n *big.Int) *big.Int {
 		p.Read(buf)
 		x := big.NewInt(0)
 		x.SetBytes(buf)
-		x.Rsh(x, uint(bytes*8-bits))
+		x.And(x, &mask)
 		if x.Cmp(n) < 0 {
 			return x
 		}
