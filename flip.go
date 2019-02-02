@@ -71,22 +71,18 @@ func FlipOneBig(users []UserState, modulus *big.Int) (*big.Int, error) {
 	return prng.Big(modulus), nil
 }
 
-func FlipOne(users []UserState, modulus int) (int, error) {
-	ret, err := FlipOneBig(users, big.NewInt(int64(modulus)))
+func FlipInt(users []UserState, modulus int64) (int64, error) {
+	prng, err := Flip(users)
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
-	return int(ret.Uint64()), nil
+	return prng.Int(modulus), nil
 }
 
-func FlipOneCoin(users []UserState) (bool, error) {
-	var ret bool
-	tmp, err := FlipOne(users, 2)
+func FlipBool(users []UserState) (bool, error) {
+	prng, err := Flip(users)
 	if err != nil {
 		return false, err
 	}
-	if tmp > 0 {
-		ret = true
-	}
-	return ret, nil
+	return prng.Bool(), nil
 }
