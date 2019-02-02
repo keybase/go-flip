@@ -6,20 +6,20 @@ import (
 )
 
 type Error struct {
-	NoCommitments  []User
-	NoReveals      []User
-	BadCommitments []User
+	NoCommitments  []Player
+	NoReveals      []Player
+	BadCommitments []Player
 }
 
-func (e *Error) addNoCommitment(u User) {
+func (e *Error) addNoCommitment(u Player) {
 	e.NoCommitments = append(e.NoCommitments, u)
 }
 
-func (e *Error) addNoReveal(u User) {
+func (e *Error) addNoReveal(u Player) {
 	e.NoReveals = append(e.NoReveals, u)
 }
 
-func (e *Error) addBadCommitment(u User) {
+func (e *Error) addBadCommitment(u Player) {
 	e.BadCommitments = append(e.BadCommitments, u)
 }
 
@@ -27,7 +27,7 @@ func (e Error) IsNil() bool {
 	return len(e.NoCommitments)+len(e.NoReveals)+len(e.BadCommitments) == 0
 }
 
-func (e Error) format(out []string, what string, users []User) []string {
+func (e Error) format(out []string, what string, users []Player) []string {
 	if len(users) == 0 {
 		return out
 	}
@@ -35,7 +35,7 @@ func (e Error) format(out []string, what string, users []User) []string {
 	for _, u := range users {
 		userStrings = append(userStrings, string(u))
 	}
-	p := fmt.Sprintf("Users %s: %s", what, strings.Join(userStrings, ","))
+	p := fmt.Sprintf("Players %s: %s", what, strings.Join(userStrings, ","))
 	return append(out, p)
 }
 

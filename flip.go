@@ -4,10 +4,10 @@ import (
 	"math/big"
 )
 
-type User string
+type Player string
 
-type UserState struct {
-	User       User
+type PlayerState struct {
+	Player     Player
 	Commitment Secret
 	Reveal     Secret
 }
@@ -16,28 +16,28 @@ func checkReveal(c Secret, r Secret) bool {
 	return r.Hash().Eq(c)
 }
 
-func checkUser(err *Error, user UserState) {
+func checkPlayer(err *Error, user PlayerState) {
 	if user.Commitment.IsNil() {
-		err.addNoCommitment(user.User)
+		err.addNoCommitment(user.Player)
 		return
 	}
 	if user.Reveal.IsNil() {
-		err.addNoReveal(user.User)
+		err.addNoReveal(user.Player)
 		return
 	}
 
 	if !checkReveal(user.Commitment, user.Reveal) {
-		err.addBadCommitment(user.User)
+		err.addBadCommitment(user.Player)
 		return
 	}
 
 	return
 }
 
-func checkUsers(users []UserState) error {
+func checkPlayers(users []PlayerState) error {
 	var err Error
 	for _, u := range users {
-		checkUser(&err, u)
+		checkPlayer(&err, u)
 	}
 	if err.IsNil() {
 		return nil
@@ -46,7 +46,7 @@ func checkUsers(users []UserState) error {
 	return err
 }
 
-func computeSecret(users []UserState) Secret {
+func computeSecret(users []PlayerState) Secret {
 	var res Secret
 	for _, u := range users {
 		res.XOR(u.Commitment)
@@ -54,8 +54,8 @@ func computeSecret(users []UserState) Secret {
 	return res
 }
 
-func Flip(users []UserState) (*PRNG, error) {
-	err := checkUsers(users)
+func Flip(users []PlayerState) (*PRNG, error) {
+	err := checkPlayers(users)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func Flip(users []UserState) (*PRNG, error) {
 	return NewPRNG(res), nil
 }
 
-func FlipOneBig(users []UserState, modulus *big.Int) (*big.Int, error) {
+func FlipOneBig(users []PlayerState, modulus *big.Int) (*big.Int, error) {
 	prng, err := Flip(users)
 	if err != nil {
 		return nil, err
@@ -71,7 +71,7 @@ func FlipOneBig(users []UserState, modulus *big.Int) (*big.Int, error) {
 	return prng.Big(modulus), nil
 }
 
-func FlipInt(users []UserState, modulus int64) (int64, error) {
+func FlipInt(users []PlayerState, modulus int64) (int64, error) {
 	prng, err := Flip(users)
 	if err != nil {
 		return 0, err
@@ -79,7 +79,7 @@ func FlipInt(users []UserState, modulus int64) (int64, error) {
 	return prng.Int(modulus), nil
 }
 
-func FlipBool(users []UserState) (bool, error) {
+func FlipBool(users []PlayerState) (bool, error) {
 	prng, err := Flip(users)
 	if err != nil {
 		return false, err
