@@ -5,13 +5,6 @@ import (
 	"time"
 )
 
-type Stage int
-
-const (
-	Commit Stage = 0
-	Reveal Stage = 1
-)
-
 type Broker struct {
 	inputCh       chan Input
 	outputCh      chan Output

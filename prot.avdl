@@ -1,0 +1,19 @@
+
+@namespace("flip")
+
+protocol flip {
+
+  enum Stage {
+  	REGISTRATION_1,
+  	COMMITMENT_2,
+  	REVEAL_3
+  }
+
+  fixed Secret(32);
+
+  variant InputMessage switch (Stage s) {
+  case COMMITMENT: Secret;
+  case REVEAL: Secret;
+  }
+
+}

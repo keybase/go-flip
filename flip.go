@@ -6,7 +6,9 @@ import (
 )
 
 // Player is an identifier for a player in the flip game. It can be anything,
-// but must be unique for the game.  You can use user IDs in hex here, for instance.
+// but must be unique for the game.  You can use user IDs in hex here, for instance,
+// or possibly (userid||deviceID) since each user in Keybase will likely enter
+// a flip multiple times (if many if his devices are on).
 type Player string
 
 func (p Player) key() string {

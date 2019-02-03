@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 )
 
-type Secret [32]byte
-
 func (s *Secret) XOR(t Secret) *Secret {
 	for i, b := range t {
 		s[i] = b ^ s[i]
