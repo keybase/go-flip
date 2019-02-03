@@ -5,25 +5,21 @@ import (
 	"math/big"
 )
 
-type GameMessageHeader struct {
-	User   UID
-	Device DeviceID
-}
-
-type GameMessageEncoded struct {
-	Header GameMessageHeader
+type GameMessageWrappedEncoded struct {
+	Header UserDevice
 	Body   string // base64-encoded GameMessaageBody that comes in over chat
 }
 
-type GameMessage struct {
-	Header GameMessageHeader
-	Body   GameMessageBody
+type GameMessageWrapped struct {
+	Header UserDevice
+	Msg    GameMessage
 }
 
 type Chatter interface {
-	ReadNextMessage(c context.Context) (*GameMessageEncoded, error)
-	SendMessage(c context.Context, gm GameMessageEncoded) error
-	RepoortHook(c context.Context, gm GameMessage) error
+	ReadChat(context.Context) (*GameMessageWrappedEncoded, error)
+	SendChat(context.Context, string) error
+	ReportHook(context.Context, GameMessageWrapped)
+	ResultHook(context.Context) (GameMetadata, *Result, error)
 }
 
 type Dealer struct {
@@ -38,23 +34,34 @@ type IntResult struct {
 
 type Permutation []int
 
+type GameMetadata struct {
+	GameID    GameID
+	Initiator UserDevice
+}
+
 type Result struct {
 	P Permutation
 	I []IntResult
 }
 
-type res struct {
-	p *FlipParameters
-	r *Result
-	e error
+func (d *Dealer) handleMessage(c context.Context, msg *GameMessageWrappedEncoded) error {
+	return nil
 }
 
-func (d *Dealer) runLoop(c context.Context, doneCh chan<- res) {
+func NewDealer(c Chatter) *Dealer {
+	return &Dealer{chatter: c}
 }
 
-func (d *Dealer) Run(c context.Context) (*FlipParameters, *Result, error) {
-	doneCh := make(chan res)
-	go d.runLoop(c, doneCh)
-	res := <-doneCh
-	return res.p, res.r, res.e
+func (d *Dealer) Run(c context.Context) error {
+	for {
+		msg, err := d.chatter.ReadChat(c)
+		if err != nil {
+			return err
+		}
+		err = d.handleMessage(c, msg)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

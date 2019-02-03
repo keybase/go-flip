@@ -48,7 +48,6 @@ func (o DeviceID) DeepCopy() DeviceID {
 }
 
 type Start struct {
-	GameID               GameID         `codec:"gameID" json:"gameID"`
 	RegistrationEndsAt   Time           `codec:"registrationEndsAt" json:"registrationEndsAt"`
 	CommitmentPeriodMsec int64          `codec:"commitmentPeriodMsec" json:"commitmentPeriodMsec"`
 	RevealPeriodMsec     int64          `codec:"revealPeriodMsec" json:"revealPeriodMsec"`
@@ -57,7 +56,6 @@ type Start struct {
 
 func (o Start) DeepCopy() Start {
 	return Start{
-		GameID:               o.GameID.DeepCopy(),
 		RegistrationEndsAt:   o.RegistrationEndsAt.DeepCopy(),
 		CommitmentPeriodMsec: o.CommitmentPeriodMsec,
 		RevealPeriodMsec:     o.RevealPeriodMsec,
@@ -498,6 +496,18 @@ func (o GameMessageBody) DeepCopy() GameMessageBody {
 			tmp := (*x).DeepCopy()
 			return &tmp
 		})(o.Reveal__),
+	}
+}
+
+type GameMessage struct {
+	GameID GameID          `codec:"gameID" json:"gameID"`
+	Body   GameMessageBody `codec:"body" json:"body"`
+}
+
+func (o GameMessage) DeepCopy() GameMessage {
+	return GameMessage{
+		GameID: o.GameID.DeepCopy(),
+		Body:   o.Body.DeepCopy(),
 	}
 }
 
