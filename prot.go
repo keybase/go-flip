@@ -48,16 +48,20 @@ func (o DeviceID) DeepCopy() DeviceID {
 }
 
 type Start struct {
-	GameID             GameID         `codec:"gameID" json:"gameID"`
-	RegistrationEndsAt Time           `codec:"registrationEndsAt" json:"registrationEndsAt"`
-	Params             FlipParameters `codec:"params" json:"params"`
+	GameID               GameID         `codec:"gameID" json:"gameID"`
+	RegistrationEndsAt   Time           `codec:"registrationEndsAt" json:"registrationEndsAt"`
+	CommitmentPeriodMsec int64          `codec:"commitmentPeriodMsec" json:"commitmentPeriodMsec"`
+	RevealPeriodMsec     int64          `codec:"revealPeriodMsec" json:"revealPeriodMsec"`
+	Params               FlipParameters `codec:"params" json:"params"`
 }
 
 func (o Start) DeepCopy() Start {
 	return Start{
-		GameID:             o.GameID.DeepCopy(),
-		RegistrationEndsAt: o.RegistrationEndsAt.DeepCopy(),
-		Params:             o.Params.DeepCopy(),
+		GameID:               o.GameID.DeepCopy(),
+		RegistrationEndsAt:   o.RegistrationEndsAt.DeepCopy(),
+		CommitmentPeriodMsec: o.CommitmentPeriodMsec,
+		RevealPeriodMsec:     o.RevealPeriodMsec,
+		Params:               o.Params.DeepCopy(),
 	}
 }
 
@@ -361,7 +365,7 @@ func (o Secret) DeepCopy() Secret {
 	return ret
 }
 
-type GameMessage struct {
+type GameMessageBody struct {
 	S__                    Stage                 `codec:"s" json:"s"`
 	Start__                *Start                `codec:"start,omitempty" json:"start,omitempty"`
 	RegistrationComplete__ *RegistrationComplete `codec:"registrationComplete,omitempty" json:"registrationComplete,omitempty"`
@@ -369,7 +373,7 @@ type GameMessage struct {
 	Reveal__               *Secret               `codec:"reveal,omitempty" json:"reveal,omitempty"`
 }
 
-func (o *GameMessage) S() (ret Stage, err error) {
+func (o *GameMessageBody) S() (ret Stage, err error) {
 	switch o.S__ {
 	case Stage_START:
 		if o.Start__ == nil {
@@ -395,7 +399,7 @@ func (o *GameMessage) S() (ret Stage, err error) {
 	return o.S__, nil
 }
 
-func (o GameMessage) Start() (res Start) {
+func (o GameMessageBody) Start() (res Start) {
 	if o.S__ != Stage_START {
 		panic("wrong case accessed")
 	}
@@ -405,7 +409,7 @@ func (o GameMessage) Start() (res Start) {
 	return *o.Start__
 }
 
-func (o GameMessage) RegistrationComplete() (res RegistrationComplete) {
+func (o GameMessageBody) RegistrationComplete() (res RegistrationComplete) {
 	if o.S__ != Stage_REGISTRATION_COMPLETE {
 		panic("wrong case accessed")
 	}
@@ -415,7 +419,7 @@ func (o GameMessage) RegistrationComplete() (res RegistrationComplete) {
 	return *o.RegistrationComplete__
 }
 
-func (o GameMessage) Commitment() (res Secret) {
+func (o GameMessageBody) Commitment() (res Secret) {
 	if o.S__ != Stage_COMMITMENT {
 		panic("wrong case accessed")
 	}
@@ -425,7 +429,7 @@ func (o GameMessage) Commitment() (res Secret) {
 	return *o.Commitment__
 }
 
-func (o GameMessage) Reveal() (res Secret) {
+func (o GameMessageBody) Reveal() (res Secret) {
 	if o.S__ != Stage_REVEAL {
 		panic("wrong case accessed")
 	}
@@ -435,36 +439,36 @@ func (o GameMessage) Reveal() (res Secret) {
 	return *o.Reveal__
 }
 
-func NewGameMessageWithStart(v Start) GameMessage {
-	return GameMessage{
+func NewGameMessageBodyWithStart(v Start) GameMessageBody {
+	return GameMessageBody{
 		S__:     Stage_START,
 		Start__: &v,
 	}
 }
 
-func NewGameMessageWithRegistrationComplete(v RegistrationComplete) GameMessage {
-	return GameMessage{
+func NewGameMessageBodyWithRegistrationComplete(v RegistrationComplete) GameMessageBody {
+	return GameMessageBody{
 		S__: Stage_REGISTRATION_COMPLETE,
 		RegistrationComplete__: &v,
 	}
 }
 
-func NewGameMessageWithCommitment(v Secret) GameMessage {
-	return GameMessage{
+func NewGameMessageBodyWithCommitment(v Secret) GameMessageBody {
+	return GameMessageBody{
 		S__:          Stage_COMMITMENT,
 		Commitment__: &v,
 	}
 }
 
-func NewGameMessageWithReveal(v Secret) GameMessage {
-	return GameMessage{
+func NewGameMessageBodyWithReveal(v Secret) GameMessageBody {
+	return GameMessageBody{
 		S__:      Stage_REVEAL,
 		Reveal__: &v,
 	}
 }
 
-func (o GameMessage) DeepCopy() GameMessage {
-	return GameMessage{
+func (o GameMessageBody) DeepCopy() GameMessageBody {
+	return GameMessageBody{
 		S__: o.S__.DeepCopy(),
 		Start__: (func(x *Start) *Start {
 			if x == nil {
