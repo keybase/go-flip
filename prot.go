@@ -8,26 +8,342 @@ import (
 	"github.com/keybase/go-framed-msgpack-rpc/rpc"
 )
 
+type Time int64
+
+func (o Time) DeepCopy() Time {
+	return o
+}
+
+type GameID []byte
+
+func (o GameID) DeepCopy() GameID {
+	return (func(x []byte) []byte {
+		if x == nil {
+			return nil
+		}
+		return append([]byte{}, x...)
+	})(o)
+}
+
+type UID []byte
+
+func (o UID) DeepCopy() UID {
+	return (func(x []byte) []byte {
+		if x == nil {
+			return nil
+		}
+		return append([]byte{}, x...)
+	})(o)
+}
+
+type DeviceID []byte
+
+func (o DeviceID) DeepCopy() DeviceID {
+	return (func(x []byte) []byte {
+		if x == nil {
+			return nil
+		}
+		return append([]byte{}, x...)
+	})(o)
+}
+
+type Start struct {
+	GameID             GameID         `codec:"gameID" json:"gameID"`
+	RegistrationEndsAt Time           `codec:"registrationEndsAt" json:"registrationEndsAt"`
+	Params             FlipParameters `codec:"params" json:"params"`
+}
+
+func (o Start) DeepCopy() Start {
+	return Start{
+		GameID:             o.GameID.DeepCopy(),
+		RegistrationEndsAt: o.RegistrationEndsAt.DeepCopy(),
+		Params:             o.Params.DeepCopy(),
+	}
+}
+
+type UserDevice struct {
+	User   UID      `codec:"user" json:"user"`
+	Device DeviceID `codec:"device" json:"device"`
+}
+
+func (o UserDevice) DeepCopy() UserDevice {
+	return UserDevice{
+		User:   o.User.DeepCopy(),
+		Device: o.Device.DeepCopy(),
+	}
+}
+
+type RegistrationComplete struct {
+	Player []UserDevice `codec:"player" json:"player"`
+}
+
+func (o RegistrationComplete) DeepCopy() RegistrationComplete {
+	return RegistrationComplete{
+		Player: (func(x []UserDevice) []UserDevice {
+			if x == nil {
+				return nil
+			}
+			ret := make([]UserDevice, len(x))
+			for i, v := range x {
+				vCopy := v.DeepCopy()
+				ret[i] = vCopy
+			}
+			return ret
+		})(o.Player),
+	}
+}
+
+type FlipType int
+
+const (
+	FlipType_INTS    FlipType = 1
+	FlipType_SHUFFLE FlipType = 2
+)
+
+func (o FlipType) DeepCopy() FlipType { return o }
+
+var FlipTypeMap = map[string]FlipType{
+	"INTS":    1,
+	"SHUFFLE": 2,
+}
+
+var FlipTypeRevMap = map[FlipType]string{
+	1: "INTS",
+	2: "SHUFFLE",
+}
+
+func (e FlipType) String() string {
+	if v, ok := FlipTypeRevMap[e]; ok {
+		return v
+	}
+	return ""
+}
+
+type IntType int
+
+const (
+	IntType_FIXED IntType = 1
+	IntType_BIG   IntType = 2
+	IntType_BOOL  IntType = 3
+)
+
+func (o IntType) DeepCopy() IntType { return o }
+
+var IntTypeMap = map[string]IntType{
+	"FIXED": 1,
+	"BIG":   2,
+	"BOOL":  3,
+}
+
+var IntTypeRevMap = map[IntType]string{
+	1: "FIXED",
+	2: "BIG",
+	3: "BOOL",
+}
+
+func (e IntType) String() string {
+	if v, ok := IntTypeRevMap[e]; ok {
+		return v
+	}
+	return ""
+}
+
+type FlipParametersInt struct {
+	T__     IntType `codec:"t" json:"t"`
+	Big__   *[]byte `codec:"big,omitempty" json:"big,omitempty"`
+	Fixed__ *int64  `codec:"fixed,omitempty" json:"fixed,omitempty"`
+}
+
+func (o *FlipParametersInt) T() (ret IntType, err error) {
+	switch o.T__ {
+	case IntType_BIG:
+		if o.Big__ == nil {
+			err = errors.New("unexpected nil value for Big__")
+			return ret, err
+		}
+	case IntType_FIXED:
+		if o.Fixed__ == nil {
+			err = errors.New("unexpected nil value for Fixed__")
+			return ret, err
+		}
+	}
+	return o.T__, nil
+}
+
+func (o FlipParametersInt) Big() (res []byte) {
+	if o.T__ != IntType_BIG {
+		panic("wrong case accessed")
+	}
+	if o.Big__ == nil {
+		return
+	}
+	return *o.Big__
+}
+
+func (o FlipParametersInt) Fixed() (res int64) {
+	if o.T__ != IntType_FIXED {
+		panic("wrong case accessed")
+	}
+	if o.Fixed__ == nil {
+		return
+	}
+	return *o.Fixed__
+}
+
+func NewFlipParametersIntWithBig(v []byte) FlipParametersInt {
+	return FlipParametersInt{
+		T__:   IntType_BIG,
+		Big__: &v,
+	}
+}
+
+func NewFlipParametersIntWithFixed(v int64) FlipParametersInt {
+	return FlipParametersInt{
+		T__:     IntType_FIXED,
+		Fixed__: &v,
+	}
+}
+
+func NewFlipParametersIntWithBool() FlipParametersInt {
+	return FlipParametersInt{
+		T__: IntType_BOOL,
+	}
+}
+
+func (o FlipParametersInt) DeepCopy() FlipParametersInt {
+	return FlipParametersInt{
+		T__: o.T__.DeepCopy(),
+		Big__: (func(x *[]byte) *[]byte {
+			if x == nil {
+				return nil
+			}
+			tmp := (func(x []byte) []byte {
+				if x == nil {
+					return nil
+				}
+				return append([]byte{}, x...)
+			})((*x))
+			return &tmp
+		})(o.Big__),
+		Fixed__: (func(x *int64) *int64 {
+			if x == nil {
+				return nil
+			}
+			tmp := (*x)
+			return &tmp
+		})(o.Fixed__),
+	}
+}
+
+type FlipParameters struct {
+	T__       FlipType             `codec:"t" json:"t"`
+	Ints__    *[]FlipParametersInt `codec:"ints,omitempty" json:"ints,omitempty"`
+	Shuffle__ *int64               `codec:"shuffle,omitempty" json:"shuffle,omitempty"`
+}
+
+func (o *FlipParameters) T() (ret FlipType, err error) {
+	switch o.T__ {
+	case FlipType_INTS:
+		if o.Ints__ == nil {
+			err = errors.New("unexpected nil value for Ints__")
+			return ret, err
+		}
+	case FlipType_SHUFFLE:
+		if o.Shuffle__ == nil {
+			err = errors.New("unexpected nil value for Shuffle__")
+			return ret, err
+		}
+	}
+	return o.T__, nil
+}
+
+func (o FlipParameters) Ints() (res []FlipParametersInt) {
+	if o.T__ != FlipType_INTS {
+		panic("wrong case accessed")
+	}
+	if o.Ints__ == nil {
+		return
+	}
+	return *o.Ints__
+}
+
+func (o FlipParameters) Shuffle() (res int64) {
+	if o.T__ != FlipType_SHUFFLE {
+		panic("wrong case accessed")
+	}
+	if o.Shuffle__ == nil {
+		return
+	}
+	return *o.Shuffle__
+}
+
+func NewFlipParametersWithInts(v []FlipParametersInt) FlipParameters {
+	return FlipParameters{
+		T__:    FlipType_INTS,
+		Ints__: &v,
+	}
+}
+
+func NewFlipParametersWithShuffle(v int64) FlipParameters {
+	return FlipParameters{
+		T__:       FlipType_SHUFFLE,
+		Shuffle__: &v,
+	}
+}
+
+func (o FlipParameters) DeepCopy() FlipParameters {
+	return FlipParameters{
+		T__: o.T__.DeepCopy(),
+		Ints__: (func(x *[]FlipParametersInt) *[]FlipParametersInt {
+			if x == nil {
+				return nil
+			}
+			tmp := (func(x []FlipParametersInt) []FlipParametersInt {
+				if x == nil {
+					return nil
+				}
+				ret := make([]FlipParametersInt, len(x))
+				for i, v := range x {
+					vCopy := v.DeepCopy()
+					ret[i] = vCopy
+				}
+				return ret
+			})((*x))
+			return &tmp
+		})(o.Ints__),
+		Shuffle__: (func(x *int64) *int64 {
+			if x == nil {
+				return nil
+			}
+			tmp := (*x)
+			return &tmp
+		})(o.Shuffle__),
+	}
+}
+
 type Stage int
 
 const (
-	Stage_REGISTRATION Stage = 1
-	Stage_COMMITMENT   Stage = 2
-	Stage_REVEAL       Stage = 3
+	Stage_START                 Stage = 1
+	Stage_REGISTRATION_COMPLETE Stage = 2
+	Stage_COMMITMENT            Stage = 3
+	Stage_REVEAL                Stage = 4
 )
 
 func (o Stage) DeepCopy() Stage { return o }
 
 var StageMap = map[string]Stage{
-	"REGISTRATION": 1,
-	"COMMITMENT":   2,
-	"REVEAL":       3,
+	"START":                 1,
+	"REGISTRATION_COMPLETE": 2,
+	"COMMITMENT":            3,
+	"REVEAL":                4,
 }
 
 var StageRevMap = map[Stage]string{
-	1: "REGISTRATION",
-	2: "COMMITMENT",
-	3: "REVEAL",
+	1: "START",
+	2: "REGISTRATION_COMPLETE",
+	3: "COMMITMENT",
+	4: "REVEAL",
 }
 
 func (e Stage) String() string {
@@ -45,14 +361,26 @@ func (o Secret) DeepCopy() Secret {
 	return ret
 }
 
-type InputMessage struct {
-	S__          Stage   `codec:"s" json:"s"`
-	Commitment__ *Secret `codec:"commitment,omitempty" json:"commitment,omitempty"`
-	Reveal__     *Secret `codec:"reveal,omitempty" json:"reveal,omitempty"`
+type GameMessage struct {
+	S__                    Stage                 `codec:"s" json:"s"`
+	Start__                *Start                `codec:"start,omitempty" json:"start,omitempty"`
+	RegistrationComplete__ *RegistrationComplete `codec:"registrationComplete,omitempty" json:"registrationComplete,omitempty"`
+	Commitment__           *Secret               `codec:"commitment,omitempty" json:"commitment,omitempty"`
+	Reveal__               *Secret               `codec:"reveal,omitempty" json:"reveal,omitempty"`
 }
 
-func (o *InputMessage) S() (ret Stage, err error) {
+func (o *GameMessage) S() (ret Stage, err error) {
 	switch o.S__ {
+	case Stage_START:
+		if o.Start__ == nil {
+			err = errors.New("unexpected nil value for Start__")
+			return ret, err
+		}
+	case Stage_REGISTRATION_COMPLETE:
+		if o.RegistrationComplete__ == nil {
+			err = errors.New("unexpected nil value for RegistrationComplete__")
+			return ret, err
+		}
 	case Stage_COMMITMENT:
 		if o.Commitment__ == nil {
 			err = errors.New("unexpected nil value for Commitment__")
@@ -67,7 +395,27 @@ func (o *InputMessage) S() (ret Stage, err error) {
 	return o.S__, nil
 }
 
-func (o InputMessage) Commitment() (res Secret) {
+func (o GameMessage) Start() (res Start) {
+	if o.S__ != Stage_START {
+		panic("wrong case accessed")
+	}
+	if o.Start__ == nil {
+		return
+	}
+	return *o.Start__
+}
+
+func (o GameMessage) RegistrationComplete() (res RegistrationComplete) {
+	if o.S__ != Stage_REGISTRATION_COMPLETE {
+		panic("wrong case accessed")
+	}
+	if o.RegistrationComplete__ == nil {
+		return
+	}
+	return *o.RegistrationComplete__
+}
+
+func (o GameMessage) Commitment() (res Secret) {
 	if o.S__ != Stage_COMMITMENT {
 		panic("wrong case accessed")
 	}
@@ -77,7 +425,7 @@ func (o InputMessage) Commitment() (res Secret) {
 	return *o.Commitment__
 }
 
-func (o InputMessage) Reveal() (res Secret) {
+func (o GameMessage) Reveal() (res Secret) {
 	if o.S__ != Stage_REVEAL {
 		panic("wrong case accessed")
 	}
@@ -87,23 +435,51 @@ func (o InputMessage) Reveal() (res Secret) {
 	return *o.Reveal__
 }
 
-func NewInputMessageWithCommitment(v Secret) InputMessage {
-	return InputMessage{
+func NewGameMessageWithStart(v Start) GameMessage {
+	return GameMessage{
+		S__:     Stage_START,
+		Start__: &v,
+	}
+}
+
+func NewGameMessageWithRegistrationComplete(v RegistrationComplete) GameMessage {
+	return GameMessage{
+		S__: Stage_REGISTRATION_COMPLETE,
+		RegistrationComplete__: &v,
+	}
+}
+
+func NewGameMessageWithCommitment(v Secret) GameMessage {
+	return GameMessage{
 		S__:          Stage_COMMITMENT,
 		Commitment__: &v,
 	}
 }
 
-func NewInputMessageWithReveal(v Secret) InputMessage {
-	return InputMessage{
+func NewGameMessageWithReveal(v Secret) GameMessage {
+	return GameMessage{
 		S__:      Stage_REVEAL,
 		Reveal__: &v,
 	}
 }
 
-func (o InputMessage) DeepCopy() InputMessage {
-	return InputMessage{
+func (o GameMessage) DeepCopy() GameMessage {
+	return GameMessage{
 		S__: o.S__.DeepCopy(),
+		Start__: (func(x *Start) *Start {
+			if x == nil {
+				return nil
+			}
+			tmp := (*x).DeepCopy()
+			return &tmp
+		})(o.Start__),
+		RegistrationComplete__: (func(x *RegistrationComplete) *RegistrationComplete {
+			if x == nil {
+				return nil
+			}
+			tmp := (*x).DeepCopy()
+			return &tmp
+		})(o.RegistrationComplete__),
 		Commitment__: (func(x *Secret) *Secret {
 			if x == nil {
 				return nil

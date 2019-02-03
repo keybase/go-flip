@@ -3,15 +3,69 @@
 
 protocol flip {
 
+  // Time in milliseconds
+  @typedef("long")
+  record Time {}
+
+  @typedef("bytes")
+  record GameID {}
+
+  @typedef("bytes")
+  record UID {}
+
+  @typedef("bytes")
+  record DeviceID {}
+
+  record Start {
+    GameID gameID;
+    Time registrationEndsAt;
+    FlipParameters params;
+  }
+
+  record UserDevice {
+    UID user;
+    DeviceID device;
+  }
+
+  record RegistrationComplete {
+    array<UserDevice> player;
+  }
+
+  enum FlipType {
+    INTS_1,
+    SHUFFLE_2
+  }
+
+  enum IntType {
+    FIXED_1,
+    BIG_2,
+    BOOL_3
+  }
+
+  variant FlipParametersInt switch (IntType t) {
+  case BIG: bytes;
+  case FIXED: long;
+  case BOOL: void;
+  }
+
+  variant FlipParameters switch (FlipType t) {
+  case INTS: array<FlipParametersInt>;
+  case SHUFFLE: long;
+  }
+
+
   enum Stage {
-  	REGISTRATION_1,
-  	COMMITMENT_2,
-  	REVEAL_3
+    START_1,
+    REGISTRATION_COMPLETE_2,
+    COMMITMENT_3,
+    REVEAL_4
   }
 
   fixed Secret(32);
 
-  variant InputMessage switch (Stage s) {
+  variant GameMessage switch (Stage s) {
+  case START: Start;
+  case REGISTRATION_COMPLETE: RegistrationComplete;
   case COMMITMENT: Secret;
   case REVEAL: Secret;
   }
