@@ -34,6 +34,9 @@ protocol flip {
     array<UserDevice> player;
   }
 
+  record Register {
+  }
+
   enum FlipType {
     INTS_1,
     SHUFFLE_2
@@ -58,9 +61,10 @@ protocol flip {
 
   enum Stage {
     START_1,
-    REGISTRATION_COMPLETE_2,
-    COMMITMENT_3,
-    REVEAL_4
+    REGISTER_2,
+    REGISTRATION_COMPLETE_3,
+    COMMITMENT_4,
+    REVEAL_5
   }
 
   fixed Secret(32);

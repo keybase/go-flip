@@ -95,6 +95,13 @@ func (o RegistrationComplete) DeepCopy() RegistrationComplete {
 	}
 }
 
+type Register struct {
+}
+
+func (o Register) DeepCopy() Register {
+	return Register{}
+}
+
 type FlipType int
 
 const (
@@ -327,25 +334,28 @@ type Stage int
 
 const (
 	Stage_START                 Stage = 1
-	Stage_REGISTRATION_COMPLETE Stage = 2
-	Stage_COMMITMENT            Stage = 3
-	Stage_REVEAL                Stage = 4
+	Stage_REGISTER              Stage = 2
+	Stage_REGISTRATION_COMPLETE Stage = 3
+	Stage_COMMITMENT            Stage = 4
+	Stage_REVEAL                Stage = 5
 )
 
 func (o Stage) DeepCopy() Stage { return o }
 
 var StageMap = map[string]Stage{
 	"START":                 1,
-	"REGISTRATION_COMPLETE": 2,
-	"COMMITMENT":            3,
-	"REVEAL":                4,
+	"REGISTER":              2,
+	"REGISTRATION_COMPLETE": 3,
+	"COMMITMENT":            4,
+	"REVEAL":                5,
 }
 
 var StageRevMap = map[Stage]string{
 	1: "START",
-	2: "REGISTRATION_COMPLETE",
-	3: "COMMITMENT",
-	4: "REVEAL",
+	2: "REGISTER",
+	3: "REGISTRATION_COMPLETE",
+	4: "COMMITMENT",
+	5: "REVEAL",
 }
 
 func (e Stage) String() string {

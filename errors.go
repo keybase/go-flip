@@ -58,3 +58,27 @@ type GameAlreadyStartedError GameKey
 func (g GameAlreadyStartedError) Error() string {
 	return fmt.Sprintf("Game already started: %s", g)
 }
+
+type GameFinishedError GameKey
+
+func (g GameFinishedError) Error() string {
+	return fmt.Sprintf("Game is finisehd: %s", g)
+}
+
+type TimeoutError struct {
+	Key   GameKey
+	Stage Stage
+}
+
+func (t TimeoutError) Error() string {
+	return fmt.Sprintf("Game %s timed out in stage: %d", t.Stage)
+}
+
+type BadMessageForStageError struct {
+	MessageStage Stage
+	GameStage    Stage
+}
+
+func (b BadMessageForStageError) Error() string {
+	return fmt.Sprintf("Message received (%s) was for wrong stage (%s)", b.MessageStage, b.GameStage)
+}

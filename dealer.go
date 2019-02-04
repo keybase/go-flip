@@ -3,10 +3,12 @@ package flip
 import (
 	"context"
 	"encoding/base64"
+	clockwork "github.com/keybase/clockwork"
 	"github.com/keybase/go-codec/codec"
 	"math/big"
 	"strings"
 	"sync"
+	"time"
 )
 
 type GameMessageWrappedEncoded struct {
@@ -25,12 +27,13 @@ type Chatter interface {
 	ReportHook(context.Context, GameMessageWrapped)
 	ResultHook(context.Context) (GameMetadata, *Result, error)
 	CLogf(ctx context.Context, fmt string, args ...interface{})
+	Clock() clockwork.Clock
 }
 
 type Dealer struct {
 	sync.Mutex
 	chatter Chatter
-	games   map[GameKey]*Game
+	games   map[GameKey](chan<- *GameMessageWrapped)
 }
 
 type IntResult struct {
@@ -62,7 +65,11 @@ type Result struct {
 }
 
 type Game struct {
-	params Start
+	params  Start
+	key     GameKey
+	msgCh   <-chan *GameMessageWrapped
+	stage   Stage
+	chatter Chatter
 }
 
 func codecHandle() *codec.MsgpackHandle {
@@ -90,20 +97,90 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	return &ret, nil
 }
 
-func (g *Game) run(c context.Context) error {
+func (d *Dealer) run(ctx context.Context, game *Game) {
+	doneCh := make(chan error)
+	key := game.key
+	go func() {
+		doneCh <- game.run(ctx)
+	}()
+	err := <-doneCh
+	if err != nil {
+		d.chatter.CLogf(ctx, "Error running game %s: %s", key, err.Error())
+	} else {
+		d.chatter.CLogf(ctx, "Game %s ended cleanly", key)
+	}
+	d.Lock()
+	defer d.Unlock()
+	close(d.games[key])
+	delete(d.games, key)
+}
+
+func (g *Game) getNextTimer() <-chan time.Time {
+	return g.chatter.Clock().AfterTime(g.nextDeadline())
+}
+
+func (g *Game) nextDeadline() time.Time {
+	return time.Time{}
+}
+
+func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
+	s, err := msg.Msg.Body.S()
+	if err != nil {
+		return err
+	}
+	switch s {
+	case Stage_START:
+		return BadMessageForStageError{MessageStage: s, GameStage: g.stage}
+	case Stage_REGISTER:
+	}
 	return nil
 }
 
-func (d *Dealer) handleMessageStart(c context.Context, msg *GameMessageWrapped, start Start) error {
+func (g *Game) run(ctx context.Context) error {
+	for {
+		timer := g.getNextTimer()
+		select {
+		case <-timer:
+			return TimeoutError{Key: g.key, Stage: g.stage}
+		case msg := <-g.msgCh:
+			err := g.handleMessage(ctx, msg)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped, start Start) error {
 	d.Lock()
 	defer d.Unlock()
 	key := msg.GameMetadata().ToKey()
 	if d.games[key] != nil {
 		return GameAlreadyStartedError(key)
 	}
-	game := &Game{params: start}
-	d.games[key] = game
-	go game.run(c)
+	msgCh := make(chan *GameMessageWrapped)
+	game := &Game{
+		key:     key,
+		params:  start,
+		msgCh:   msgCh,
+		stage:   Stage_START,
+		chatter: d.chatter,
+	}
+	d.games[key] = msgCh
+	go d.run(ctx, game)
+	return nil
+}
+
+func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped) error {
+	d.Lock()
+	defer d.Unlock()
+	key := msg.GameMetadata().ToKey()
+	game := d.games[key]
+	if game == nil {
+		return GameFinishedError(key)
+	}
+	game <- msg
 	return nil
 }
 
@@ -119,12 +196,17 @@ func (d *Dealer) handleMessage(c context.Context, emsg *GameMessageWrappedEncode
 	switch s {
 	case Stage_START:
 		return d.handleMessageStart(c, msg, msg.Msg.Body.Start())
+	default:
+		return d.handleMessageOthers(c, msg)
 	}
 	return nil
 }
 
 func NewDealer(c Chatter) *Dealer {
-	return &Dealer{chatter: c}
+	return &Dealer{
+		chatter: c,
+		games:   make(map[GameKey](chan<- *GameMessageWrapped)),
+	}
 }
 
 func (d *Dealer) Run(ctx context.Context) error {
