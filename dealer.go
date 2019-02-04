@@ -6,6 +6,7 @@ import (
 	"github.com/keybase/go-codec/codec"
 	"math/big"
 	"strings"
+	"sync"
 )
 
 type GameMessageWrappedEncoded struct {
@@ -27,8 +28,9 @@ type Chatter interface {
 }
 
 type Dealer struct {
+	sync.Mutex
 	chatter Chatter
-	games   map[GameKey]Game
+	games   map[GameKey]*Game
 }
 
 type IntResult struct {
@@ -60,6 +62,7 @@ type Result struct {
 }
 
 type Game struct {
+	params Start
 }
 
 func codecHandle() *codec.MsgpackHandle {
@@ -87,7 +90,20 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	return &ret, nil
 }
 
+func (g *Game) run(c context.Context) error {
+	return nil
+}
+
 func (d *Dealer) handleMessageStart(c context.Context, msg *GameMessageWrapped, start Start) error {
+	d.Lock()
+	defer d.Unlock()
+	key := msg.GameMetadata().ToKey()
+	if d.games[key] != nil {
+		return GameAlreadyStartedError(key)
+	}
+	game := &Game{params: start}
+	d.games[key] = game
+	go game.run(c)
 	return nil
 }
 

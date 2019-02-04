@@ -52,3 +52,9 @@ func (e Error) Error() string {
 	parts = e.format(parts, "with duplicated IDs", e.Duplicates)
 	return fmt.Sprintf("Errors in flip: %s", strings.Join(parts, ";"))
 }
+
+type GameAlreadyStartedError GameKey
+
+func (g GameAlreadyStartedError) Error() string {
+	return fmt.Sprintf("Game already started: %s", g)
+}
