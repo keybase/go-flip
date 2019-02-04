@@ -70,12 +70,13 @@ type Result struct {
 }
 
 type Game struct {
-	params  Start
-	key     GameKey
-	msgCh   <-chan *GameMessageWrapped
-	stage   Stage
-	chatter Chatter
-	players map[UserDeviceKey]*GamePlayerState
+	initiator UserDevice
+	params    Start
+	key       GameKey
+	msgCh     <-chan *GameMessageWrapped
+	stage     Stage
+	chatter   Chatter
+	players   map[UserDeviceKey]*GamePlayerState
 }
 
 type GamePlayerState struct {
@@ -180,6 +181,9 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		}
 		g.stage = Stage_ROUND2
 	case MessageType_REVEAL:
+		if g.stage != Stage_ROUND2 {
+			return badStage()
+		}
 	}
 	return nil
 }
@@ -209,11 +213,12 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	}
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
-		key:     key,
-		params:  start,
-		msgCh:   msgCh,
-		stage:   Stage_ROUND1,
-		chatter: d.chatter,
+		initiator: msg.Header,
+		key:       key,
+		params:    start,
+		msgCh:     msgCh,
+		stage:     Stage_ROUND1,
+		chatter:   d.chatter,
 	}
 	d.games[key] = msgCh
 	go d.run(ctx, game)
