@@ -75,10 +75,43 @@ func (t TimeoutError) Error() string {
 }
 
 type BadMessageForStageError struct {
-	MessageStage Stage
-	GameStage    Stage
+	MessageType MessageType
+	Stage       Stage
 }
 
 func (b BadMessageForStageError) Error() string {
-	return fmt.Sprintf("Message received (%s) was for wrong stage (%s)", b.MessageStage, b.GameStage)
+	return fmt.Sprintf("Message received (%s) was for wrong stage (%s)", b.MessageType, b.Stage)
+}
+
+type BadVersionError Version
+
+func (b BadVersionError) Error() string {
+	return fmt.Sprintf("Bad version %d: can only handle V1", b)
+}
+
+type BadUserDeviceError struct {
+	Expected UserDevice
+	Actual   UserDevice
+}
+
+func (b BadUserDeviceError) Error() string {
+	return "Bad user device; didn't match expectations"
+}
+
+type DuplicateRegistrationError struct {
+	G GameKey
+	U UserDeviceKey
+}
+
+func (d DuplicateRegistrationError) Error() string {
+	return fmt.Sprintf("User %s registered more than once in game %s", d.G, d.U)
+}
+
+type UnregisteredUserError struct {
+	G GameKey
+	U UserDeviceKey
+}
+
+func (u UnregisteredUserError) Error() string {
+	return fmt.Sprintf("Initiator announced an unexpected user %s in game %s", u.G, u.U)
 }

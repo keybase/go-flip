@@ -18,7 +18,7 @@ type GameMessageWrappedEncoded struct {
 
 type GameMessageWrapped struct {
 	Header UserDevice
-	Msg    GameMessage
+	Msg    GameMessageV1
 }
 
 type Chatter interface {
@@ -54,10 +54,15 @@ func (g GameMessageWrapped) GameMetadata() GameMetadata {
 }
 
 func (g GameMetadata) ToKey() GameKey {
-	return GameKey(strings.Join([]string{g.Initiator.User.String(), g.Initiator.Device.String(), g.GameID.String()}, ","))
+	return GameKey(strings.Join([]string{g.Initiator.U.String(), g.Initiator.D.String(), g.GameID.String()}, ","))
 }
 
 type GameKey string
+type UserDeviceKey string
+
+func (u UserDevice) ToKey() UserDeviceKey {
+	return UserDeviceKey(strings.Join([]string{u.U.String(), u.D.String()}, ","))
+}
 
 type Result struct {
 	P Permutation
@@ -70,6 +75,13 @@ type Game struct {
 	msgCh   <-chan *GameMessageWrapped
 	stage   Stage
 	chatter Chatter
+	players map[UserDeviceKey]*GamePlayerState
+}
+
+type GamePlayerState struct {
+	ud         UserDevice
+	commitment Commitment
+	included   bool
 }
 
 func codecHandle() *codec.MsgpackHandle {
@@ -93,7 +105,14 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := GameMessageWrapped{Header: e.Header, Msg: msg}
+	v, err := msg.V()
+	if err != nil {
+		return nil, err
+	}
+	if v != Version_V1 {
+		return nil, BadVersionError(v)
+	}
+	ret := GameMessageWrapped{Header: e.Header, Msg: msg.V1()}
 	return &ret, nil
 }
 
@@ -124,14 +143,43 @@ func (g *Game) nextDeadline() time.Time {
 }
 
 func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
-	s, err := msg.Msg.Body.S()
+	t, err := msg.Msg.Body.T()
 	if err != nil {
 		return err
 	}
-	switch s {
-	case Stage_START:
-		return BadMessageForStageError{MessageStage: s, GameStage: g.stage}
-	case Stage_REGISTER:
+	badStage := func() error {
+		return BadMessageForStageError{MessageType: t, Stage: g.stage}
+	}
+	switch t {
+	case MessageType_START:
+		return badStage()
+	case MessageType_COMMITMENT:
+		if g.stage != Stage_ROUND1 {
+			return badStage()
+		}
+		key := msg.Header.ToKey()
+		if g.players[key] != nil {
+			return DuplicateRegistrationError{g.key, key}
+		}
+		g.players[key] = &GamePlayerState{
+			ud:         msg.Header,
+			commitment: msg.Msg.Body.Commitment(),
+		}
+	case MessageType_COMMITMENT_COMPLETE:
+		if g.stage != Stage_ROUND1 {
+			return badStage()
+		}
+		cc := msg.Msg.Body.CommitmentComplete()
+		for _, u := range cc.Players {
+			key := u.ToKey()
+			ps := g.players[key]
+			if ps == nil {
+				return UnregisteredUserError{G: g.key, U: key}
+			}
+			ps.included = true
+		}
+		g.stage = Stage_ROUND2
+	case MessageType_REVEAL:
 	}
 	return nil
 }
@@ -164,7 +212,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		key:     key,
 		params:  start,
 		msgCh:   msgCh,
-		stage:   Stage_START,
+		stage:   Stage_ROUND1,
 		chatter: d.chatter,
 	}
 	d.games[key] = msgCh
@@ -189,12 +237,12 @@ func (d *Dealer) handleMessage(c context.Context, emsg *GameMessageWrappedEncode
 	if err != nil {
 		return err
 	}
-	s, err := msg.Msg.Body.S()
+	t, err := msg.Msg.Body.T()
 	if err != nil {
 		return err
 	}
-	switch s {
-	case Stage_START:
+	switch t {
+	case MessageType_START:
 		return d.handleMessageStart(c, msg, msg.Msg.Body.Start())
 	default:
 		return d.handleMessageOthers(c, msg)

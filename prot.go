@@ -48,40 +48,40 @@ func (o DeviceID) DeepCopy() DeviceID {
 }
 
 type Start struct {
-	RegistrationEndsAt   Time           `codec:"registrationEndsAt" json:"registrationEndsAt"`
-	CommitmentPeriodMsec int64          `codec:"commitmentPeriodMsec" json:"commitmentPeriodMsec"`
-	RevealPeriodMsec     int64          `codec:"revealPeriodMsec" json:"revealPeriodMsec"`
-	Params               FlipParameters `codec:"params" json:"params"`
+	StartTime         Time           `codec:"startTime" json:"startTime"`
+	CommitmentEndTime Time           `codec:"commitmentEndTime" json:"commitmentEndTime"`
+	RevealPeriodMsec  int64          `codec:"revealPeriodMsec" json:"revealPeriodMsec"`
+	Params            FlipParameters `codec:"params" json:"params"`
 }
 
 func (o Start) DeepCopy() Start {
 	return Start{
-		RegistrationEndsAt:   o.RegistrationEndsAt.DeepCopy(),
-		CommitmentPeriodMsec: o.CommitmentPeriodMsec,
-		RevealPeriodMsec:     o.RevealPeriodMsec,
-		Params:               o.Params.DeepCopy(),
+		StartTime:         o.StartTime.DeepCopy(),
+		CommitmentEndTime: o.CommitmentEndTime.DeepCopy(),
+		RevealPeriodMsec:  o.RevealPeriodMsec,
+		Params:            o.Params.DeepCopy(),
 	}
 }
 
 type UserDevice struct {
-	User   UID      `codec:"user" json:"user"`
-	Device DeviceID `codec:"device" json:"device"`
+	U UID      `codec:"u" json:"u"`
+	D DeviceID `codec:"d" json:"d"`
 }
 
 func (o UserDevice) DeepCopy() UserDevice {
 	return UserDevice{
-		User:   o.User.DeepCopy(),
-		Device: o.Device.DeepCopy(),
+		U: o.U.DeepCopy(),
+		D: o.D.DeepCopy(),
 	}
 }
 
-type RegistrationComplete struct {
-	Player []UserDevice `codec:"player" json:"player"`
+type CommitmentComplete struct {
+	Players []UserDevice `codec:"players" json:"players"`
 }
 
-func (o RegistrationComplete) DeepCopy() RegistrationComplete {
-	return RegistrationComplete{
-		Player: (func(x []UserDevice) []UserDevice {
+func (o CommitmentComplete) DeepCopy() CommitmentComplete {
+	return CommitmentComplete{
+		Players: (func(x []UserDevice) []UserDevice {
 			if x == nil {
 				return nil
 			}
@@ -91,15 +91,8 @@ func (o RegistrationComplete) DeepCopy() RegistrationComplete {
 				ret[i] = vCopy
 			}
 			return ret
-		})(o.Player),
+		})(o.Players),
 	}
-}
-
-type Register struct {
-}
-
-func (o Register) DeepCopy() Register {
-	return Register{}
 }
 
 type FlipType int
@@ -330,32 +323,55 @@ func (o FlipParameters) DeepCopy() FlipParameters {
 	}
 }
 
+type MessageType int
+
+const (
+	MessageType_START               MessageType = 1
+	MessageType_COMMITMENT          MessageType = 2
+	MessageType_COMMITMENT_COMPLETE MessageType = 3
+	MessageType_REVEAL              MessageType = 4
+)
+
+func (o MessageType) DeepCopy() MessageType { return o }
+
+var MessageTypeMap = map[string]MessageType{
+	"START":               1,
+	"COMMITMENT":          2,
+	"COMMITMENT_COMPLETE": 3,
+	"REVEAL":              4,
+}
+
+var MessageTypeRevMap = map[MessageType]string{
+	1: "START",
+	2: "COMMITMENT",
+	3: "COMMITMENT_COMPLETE",
+	4: "REVEAL",
+}
+
+func (e MessageType) String() string {
+	if v, ok := MessageTypeRevMap[e]; ok {
+		return v
+	}
+	return ""
+}
+
 type Stage int
 
 const (
-	Stage_START                 Stage = 1
-	Stage_REGISTER              Stage = 2
-	Stage_REGISTRATION_COMPLETE Stage = 3
-	Stage_COMMITMENT            Stage = 4
-	Stage_REVEAL                Stage = 5
+	Stage_ROUND1 Stage = 1
+	Stage_ROUND2 Stage = 2
 )
 
 func (o Stage) DeepCopy() Stage { return o }
 
 var StageMap = map[string]Stage{
-	"START":                 1,
-	"REGISTER":              2,
-	"REGISTRATION_COMPLETE": 3,
-	"COMMITMENT":            4,
-	"REVEAL":                5,
+	"ROUND1": 1,
+	"ROUND2": 2,
 }
 
 var StageRevMap = map[Stage]string{
-	1: "START",
-	2: "REGISTER",
-	3: "REGISTRATION_COMPLETE",
-	4: "COMMITMENT",
-	5: "REVEAL",
+	1: "ROUND1",
+	2: "ROUND2",
 }
 
 func (e Stage) String() string {
@@ -373,42 +389,66 @@ func (o Secret) DeepCopy() Secret {
 	return ret
 }
 
-type GameMessageBody struct {
-	S__                    Stage                 `codec:"s" json:"s"`
-	Start__                *Start                `codec:"start,omitempty" json:"start,omitempty"`
-	RegistrationComplete__ *RegistrationComplete `codec:"registrationComplete,omitempty" json:"registrationComplete,omitempty"`
-	Commitment__           *Secret               `codec:"commitment,omitempty" json:"commitment,omitempty"`
-	Reveal__               *Secret               `codec:"reveal,omitempty" json:"reveal,omitempty"`
+type Commitment [32]byte
+
+func (o Commitment) DeepCopy() Commitment {
+	var ret Commitment
+	copy(ret[:], o[:])
+	return ret
 }
 
-func (o *GameMessageBody) S() (ret Stage, err error) {
-	switch o.S__ {
-	case Stage_START:
+type CommitmentPayload struct {
+	V Version    `codec:"v" json:"v"`
+	U UserDevice `codec:"u" json:"u"`
+	I GameID     `codec:"i" json:"i"`
+	S Time       `codec:"s" json:"s"`
+}
+
+func (o CommitmentPayload) DeepCopy() CommitmentPayload {
+	return CommitmentPayload{
+		V: o.V.DeepCopy(),
+		U: o.U.DeepCopy(),
+		I: o.I.DeepCopy(),
+		S: o.S.DeepCopy(),
+	}
+}
+
+type GameMessageBody struct {
+	T__                  MessageType         `codec:"t" json:"t"`
+	Start__              *Start              `codec:"start,omitempty" json:"start,omitempty"`
+	Commitment__         *Commitment         `codec:"commitment,omitempty" json:"commitment,omitempty"`
+	CommitmentComplete__ *CommitmentComplete `codec:"commitmentComplete,omitempty" json:"commitmentComplete,omitempty"`
+	Reveal__             *Secret             `codec:"reveal,omitempty" json:"reveal,omitempty"`
+}
+
+func (o *GameMessageBody) T() (ret MessageType, err error) {
+	switch o.T__ {
+	case MessageType_START:
 		if o.Start__ == nil {
 			err = errors.New("unexpected nil value for Start__")
 			return ret, err
 		}
-	case Stage_REGISTRATION_COMPLETE:
-		if o.RegistrationComplete__ == nil {
-			err = errors.New("unexpected nil value for RegistrationComplete__")
-			return ret, err
-		}
-	case Stage_COMMITMENT:
+	case MessageType_COMMITMENT:
 		if o.Commitment__ == nil {
 			err = errors.New("unexpected nil value for Commitment__")
 			return ret, err
 		}
-	case Stage_REVEAL:
+	case MessageType_COMMITMENT_COMPLETE:
+		if o.CommitmentComplete__ == nil {
+			err = errors.New("unexpected nil value for CommitmentComplete__")
+			return ret, err
+		}
+	case MessageType_REVEAL:
 		if o.Reveal__ == nil {
 			err = errors.New("unexpected nil value for Reveal__")
 			return ret, err
 		}
 	}
-	return o.S__, nil
+	return o.T__, nil
 }
 
 func (o GameMessageBody) Start() (res Start) {
-	if o.S__ != Stage_START {
+	if o.T__ != MessageType_START {
 		panic("wrong case accessed")
 	}
 	if o.Start__ == nil {
@@ -417,18 +457,8 @@ func (o GameMessageBody) Start() (res Start) {
 	return *o.Start__
 }
 
-func (o GameMessageBody) RegistrationComplete() (res RegistrationComplete) {
-	if o.S__ != Stage_REGISTRATION_COMPLETE {
-		panic("wrong case accessed")
-	}
-	if o.RegistrationComplete__ == nil {
-		return
-	}
-	return *o.RegistrationComplete__
-}
-
-func (o GameMessageBody) Commitment() (res Secret) {
-	if o.S__ != Stage_COMMITMENT {
+func (o GameMessageBody) Commitment() (res Commitment) {
+	if o.T__ != MessageType_COMMITMENT {
 		panic("wrong case accessed")
 	}
 	if o.Commitment__ == nil {
@@ -437,8 +467,18 @@ func (o GameMessageBody) Commitment() (res Secret) {
 	return *o.Commitment__
 }
 
+func (o GameMessageBody) CommitmentComplete() (res CommitmentComplete) {
+	if o.T__ != MessageType_COMMITMENT_COMPLETE {
+		panic("wrong case accessed")
+	}
+	if o.CommitmentComplete__ == nil {
+		return
+	}
+	return *o.CommitmentComplete__
+}
+
 func (o GameMessageBody) Reveal() (res Secret) {
-	if o.S__ != Stage_REVEAL {
+	if o.T__ != MessageType_REVEAL {
 		panic("wrong case accessed")
 	}
 	if o.Reveal__ == nil {
@@ -449,35 +489,35 @@ func (o GameMessageBody) Reveal() (res Secret) {
 
 func NewGameMessageBodyWithStart(v Start) GameMessageBody {
 	return GameMessageBody{
-		S__:     Stage_START,
+		T__:     MessageType_START,
 		Start__: &v,
 	}
 }
 
-func NewGameMessageBodyWithRegistrationComplete(v RegistrationComplete) GameMessageBody {
+func NewGameMessageBodyWithCommitment(v Commitment) GameMessageBody {
 	return GameMessageBody{
-		S__: Stage_REGISTRATION_COMPLETE,
-		RegistrationComplete__: &v,
+		T__:          MessageType_COMMITMENT,
+		Commitment__: &v,
 	}
 }
 
-func NewGameMessageBodyWithCommitment(v Secret) GameMessageBody {
+func NewGameMessageBodyWithCommitmentComplete(v CommitmentComplete) GameMessageBody {
 	return GameMessageBody{
-		S__:          Stage_COMMITMENT,
-		Commitment__: &v,
+		T__:                  MessageType_COMMITMENT_COMPLETE,
+		CommitmentComplete__: &v,
 	}
 }
 
 func NewGameMessageBodyWithReveal(v Secret) GameMessageBody {
 	return GameMessageBody{
-		S__:      Stage_REVEAL,
+		T__:      MessageType_REVEAL,
 		Reveal__: &v,
 	}
 }
 
 func (o GameMessageBody) DeepCopy() GameMessageBody {
 	return GameMessageBody{
-		S__: o.S__.DeepCopy(),
+		T__: o.T__.DeepCopy(),
 		Start__: (func(x *Start) *Start {
 			if x == nil {
 				return nil
@@ -485,20 +525,20 @@ func (o GameMessageBody) DeepCopy() GameMessageBody {
 			tmp := (*x).DeepCopy()
 			return &tmp
 		})(o.Start__),
-		RegistrationComplete__: (func(x *RegistrationComplete) *RegistrationComplete {
-			if x == nil {
-				return nil
-			}
-			tmp := (*x).DeepCopy()
-			return &tmp
-		})(o.RegistrationComplete__),
-		Commitment__: (func(x *Secret) *Secret {
+		Commitment__: (func(x *Commitment) *Commitment {
 			if x == nil {
 				return nil
 			}
 			tmp := (*x).DeepCopy()
 			return &tmp
 		})(o.Commitment__),
+		CommitmentComplete__: (func(x *CommitmentComplete) *CommitmentComplete {
+			if x == nil {
+				return nil
+			}
+			tmp := (*x).DeepCopy()
+			return &tmp
+		})(o.CommitmentComplete__),
 		Reveal__: (func(x *Secret) *Secret {
 			if x == nil {
 				return nil
@@ -509,13 +549,88 @@ func (o GameMessageBody) DeepCopy() GameMessageBody {
 	}
 }
 
+type Version int
+
+const (
+	Version_V1 Version = 1
+)
+
+func (o Version) DeepCopy() Version { return o }
+
+var VersionMap = map[string]Version{
+	"V1": 1,
+}
+
+var VersionRevMap = map[Version]string{
+	1: "V1",
+}
+
+func (e Version) String() string {
+	if v, ok := VersionRevMap[e]; ok {
+		return v
+	}
+	return ""
+}
+
 type GameMessage struct {
-	GameID GameID          `codec:"gameID" json:"gameID"`
-	Body   GameMessageBody `codec:"body" json:"body"`
+	V__  Version        `codec:"v" json:"v"`
+	V1__ *GameMessageV1 `codec:"v1,omitempty" json:"v1,omitempty"`
+}
+
+func (o *GameMessage) V() (ret Version, err error) {
+	switch o.V__ {
+	case Version_V1:
+		if o.V1__ == nil {
+			err = errors.New("unexpected nil value for V1__")
+			return ret, err
+		}
+	}
+	return o.V__, nil
+}
+
+func (o GameMessage) V1() (res GameMessageV1) {
+	if o.V__ != Version_V1 {
+		panic("wrong case accessed")
+	}
+	if o.V1__ == nil {
+		return
+	}
+	return *o.V1__
+}
+
+func NewGameMessageWithV1(v GameMessageV1) GameMessage {
+	return GameMessage{
+		V__:  Version_V1,
+		V1__: &v,
+	}
+}
+
+func NewGameMessageDefault(v Version) GameMessage {
+	return GameMessage{
+		V__: v,
+	}
 }
 
 func (o GameMessage) DeepCopy() GameMessage {
 	return GameMessage{
+		V__: o.V__.DeepCopy(),
+		V1__: (func(x *GameMessageV1) *GameMessageV1 {
+			if x == nil {
+				return nil
+			}
+			tmp := (*x).DeepCopy()
+			return &tmp
+		})(o.V1__),
+	}
+}
+
+type GameMessageV1 struct {
+	GameID GameID          `codec:"gameID" json:"gameID"`
+	Body   GameMessageBody `codec:"body" json:"body"`
+}
+
+func (o GameMessageV1) DeepCopy() GameMessageV1 {
+	return GameMessageV1{
 		GameID: o.GameID.DeepCopy(),
 		Body:   o.Body.DeepCopy(),
 	}
