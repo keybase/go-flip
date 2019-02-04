@@ -87,7 +87,7 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	return &ret, nil
 }
 
-func (d *Dealer) handleMessageStart(c context.Context, msg *GameMessageWrapped) error {
+func (d *Dealer) handleMessageStart(c context.Context, msg *GameMessageWrapped, start Start) error {
 	return nil
 }
 
@@ -102,7 +102,7 @@ func (d *Dealer) handleMessage(c context.Context, emsg *GameMessageWrappedEncode
 	}
 	switch s {
 	case Stage_START:
-		return d.handleMessageStart(c, msg)
+		return d.handleMessageStart(c, msg, msg.Msg.Body.Start())
 	}
 	return nil
 }
