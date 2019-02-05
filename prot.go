@@ -48,18 +48,18 @@ func (o DeviceID) DeepCopy() DeviceID {
 }
 
 type Start struct {
-	StartTime         Time           `codec:"startTime" json:"startTime"`
-	CommitmentEndTime Time           `codec:"commitmentEndTime" json:"commitmentEndTime"`
-	RevealPeriodMsec  int64          `codec:"revealPeriodMsec" json:"revealPeriodMsec"`
-	Params            FlipParameters `codec:"params" json:"params"`
+	StartTime            Time           `codec:"startTime" json:"startTime"`
+	CommitmentWindowMsec int64          `codec:"commitmentWindowMsec" json:"commitmentWindowMsec"`
+	RevealWindowMsec     int64          `codec:"revealWindowMsec" json:"revealWindowMsec"`
+	Params               FlipParameters `codec:"params" json:"params"`
 }
 
 func (o Start) DeepCopy() Start {
 	return Start{
-		StartTime:         o.StartTime.DeepCopy(),
-		CommitmentEndTime: o.CommitmentEndTime.DeepCopy(),
-		RevealPeriodMsec:  o.RevealPeriodMsec,
-		Params:            o.Params.DeepCopy(),
+		StartTime:            o.StartTime.DeepCopy(),
+		CommitmentWindowMsec: o.CommitmentWindowMsec,
+		RevealWindowMsec:     o.RevealWindowMsec,
+		Params:               o.Params.DeepCopy(),
 	}
 }
 
@@ -76,7 +76,8 @@ func (o UserDevice) DeepCopy() UserDevice {
 }
 
 type CommitmentComplete struct {
-	Players []UserDevice `codec:"players" json:"players"`
+	Players       []UserDevice `codec:"players" json:"players"`
+	RevealEndTime Time         `codec:"revealEndTime" json:"revealEndTime"`
 }
 
 func (o CommitmentComplete) DeepCopy() CommitmentComplete {
@@ -92,6 +93,7 @@ func (o CommitmentComplete) DeepCopy() CommitmentComplete {
 			}
 			return ret
 		})(o.Players),
+		RevealEndTime: o.RevealEndTime.DeepCopy(),
 	}
 }
 

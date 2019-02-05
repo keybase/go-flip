@@ -18,9 +18,10 @@ protocol flip {
 
   record Start {
     Time startTime;
-    Time commitmentEndTime;
-    // How long the reveal period lasts
-    long revealPeriodMsec;
+    // How long the commitment window lasts
+    long commitmentWindowMsec;
+    // How long the reveal window lasts
+    long revealWindowMsec;
     FlipParameters params;
   }
 
