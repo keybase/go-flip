@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	clockwork "github.com/keybase/clockwork"
-	"github.com/keybase/go-codec/codec"
 	"math/big"
 	"strings"
 	"sync"
@@ -70,6 +69,7 @@ type Result struct {
 }
 
 type Game struct {
+	id        GameID
 	initiator UserDevice
 	params    Start
 	key       GameKey
@@ -83,17 +83,7 @@ type GamePlayerState struct {
 	ud         UserDevice
 	commitment Commitment
 	included   bool
-}
-
-func codecHandle() *codec.MsgpackHandle {
-	var mh codec.MsgpackHandle
-	mh.WriteExt = true
-	return &mh
-}
-
-func msgpackDecode(dst interface{}, src []byte) error {
-	h := codecHandle()
-	return codec.NewDecoderBytes(src, h).Decode(dst)
+	secret     Secret
 }
 
 func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
@@ -143,6 +133,28 @@ func (g *Game) nextDeadline() time.Time {
 	return time.Time{}
 }
 
+func (g Game) commitmentPayload() CommitmentPayload {
+	return CommitmentPayload{
+		V: Version_V1,
+		U: g.initiator,
+		I: g.id,
+		S: g.params.StartTime,
+	}
+}
+
+func (g *Game) setSecret(ctx context.Context, ps *GamePlayerState, secret Secret) error {
+	key := ps.ud.ToKey()
+	expected, err := secret.computeCommitment(g.commitmentPayload())
+	if err != nil {
+		return err
+	}
+	if !expected.Eq(ps.commitment) {
+		return BadRevealError{G: g.key, U: key}
+	}
+	ps.secret = secret
+	return nil
+}
+
 func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
 	t, err := msg.Msg.Body.T()
 	if err != nil {
@@ -170,6 +182,9 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if g.stage != Stage_ROUND1 {
 			return badStage()
 		}
+		if !msg.Header.Eq(g.initiator) {
+			return WrongSenderError{G: g.key, Expected: g.initiator, Actual: msg.Header}
+		}
 		cc := msg.Msg.Body.CommitmentComplete()
 		for _, u := range cc.Players {
 			key := u.ToKey()
@@ -183,6 +198,19 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 	case MessageType_REVEAL:
 		if g.stage != Stage_ROUND2 {
 			return badStage()
+		}
+		key := msg.Header.ToKey()
+		ps := g.players[key]
+		if ps == nil {
+			return UnregisteredUserError{G: g.key, U: key}
+		}
+		if !ps.included {
+			g.chatter.CLogf(ctx, "Skipping unincluded sender: %s", key)
+			return nil
+		}
+		err := g.setSecret(ctx, ps, msg.Msg.Body.Reveal())
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -213,6 +241,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	}
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
+		id:        msg.Msg.GameID,
 		initiator: msg.Header,
 		key:       key,
 		params:    start,

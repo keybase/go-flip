@@ -115,3 +115,23 @@ type UnregisteredUserError struct {
 func (u UnregisteredUserError) Error() string {
 	return fmt.Sprintf("Initiator announced an unexpected user %s in game %s", u.G, u.U)
 }
+
+type WrongSenderError struct {
+	G        GameKey
+	Expected UserDevice
+	Actual   UserDevice
+}
+
+func (w WrongSenderError) Error() string {
+	return fmt.Sprintf("For game %s, wrong message sender; wanted %s but got %s",
+		w.G, w.Expected.ToKey(), w.Actual.ToKey())
+}
+
+type BadRevealError struct {
+	G GameKey
+	U UserDeviceKey
+}
+
+func (b BadRevealError) Error() string {
+	return fmt.Sprintf("In game %s, bad reveal for %s", b.G, b.U)
+}

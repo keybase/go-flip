@@ -33,3 +33,20 @@ func (s Secret) Hash() Secret {
 func (s Secret) Eq(t Secret) bool {
 	return hmac.Equal(s[:], t[:])
 }
+
+func (s Secret) computeCommitment(cp CommitmentPayload) (Commitment, error) {
+	var ret Commitment
+	hm := hmac.New(sha256.New, s[:])
+	raw, err := msgpackEncode(cp)
+	if err != nil {
+		return ret, err
+	}
+	hm.Write(raw)
+	tmp := hm.Sum(nil)
+	copy(ret[:], tmp)
+	return ret, nil
+}
+
+func (c Commitment) Eq(d Commitment) bool {
+	return hmac.Equal(c[:], d[:])
+}
