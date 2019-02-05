@@ -83,7 +83,7 @@ type GamePlayerState struct {
 	ud         UserDevice
 	commitment Commitment
 	included   bool
-	secret     Secret
+	secret     *Secret
 }
 
 func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
@@ -148,10 +148,13 @@ func (g *Game) setSecret(ctx context.Context, ps *GamePlayerState, secret Secret
 	if err != nil {
 		return err
 	}
+	if ps.secret != nil {
+		return DuplicateRevealError{G : g.key, U:key}
+	}
 	if !expected.Eq(ps.commitment) {
 		return BadRevealError{G: g.key, U: key}
 	}
-	ps.secret = secret
+	ps.secret = &secret
 	return nil
 }
 

@@ -135,3 +135,12 @@ type BadRevealError struct {
 func (b BadRevealError) Error() string {
 	return fmt.Sprintf("In game %s, bad reveal for %s", b.G, b.U)
 }
+
+type DuplicateRevealError struct {
+	G GameKey
+	U UserDeviceKey
+}
+
+func (d DuplicateRevealError) Error() string {
+	return fmt.Sprintf("In game %s, duplicated reveal for%s", d.G, d.U)
+}
