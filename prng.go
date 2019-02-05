@@ -108,3 +108,15 @@ func (p *PRNG) Bool() bool {
 	}
 	return ret
 }
+
+func (p *PRNG) Permutation(n int) []int {
+	ret := make([]int, n)
+	for i := 0; i < n; i++ {
+		ret[i] = i
+	}
+	for i := n - 1; i >= 1; i-- {
+		j := p.Int(int64(i))
+		ret[j], ret[i] = ret[i], ret[j]
+	}
+	return ret
+}

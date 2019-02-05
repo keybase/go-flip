@@ -3,6 +3,7 @@ package flip
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	clockwork "github.com/keybase/clockwork"
 	"io"
 	"math/big"
@@ -26,9 +27,14 @@ type DealersHelper interface {
 	Clock() clockwork.Clock
 }
 
-type GameStateUpdateMesasge struct {
+type GameStateUpdateMessage struct {
 	Metatdata GameMetadata
 	Err       error
+
+	// only one of the three, at most, will be true or non-nil
+	CC             *CommitmentComplete
+	RevealComplete bool
+	Result         *Result
 }
 
 type Dealer struct {
@@ -36,7 +42,7 @@ type Dealer struct {
 	dh           DealersHelper
 	games        map[GameKey](chan<- *GameMessageWrapped)
 	chatInputCh  chan GameMessageWrappedEncoded
-	gameOutputCh chan GameStateUpdateMesasge
+	gameOutputCh chan GameStateUpdateMessage
 }
 
 type IntResult struct {
@@ -73,14 +79,16 @@ type Result struct {
 }
 
 type Game struct {
-	id        GameID
-	initiator UserDevice
-	params    Start
-	key       GameKey
-	msgCh     <-chan *GameMessageWrapped
-	stage     Stage
-	dh        DealersHelper
-	players   map[UserDeviceKey]*GamePlayerState
+	id           GameID
+	initiator    UserDevice
+	params       Start
+	key          GameKey
+	msgCh        <-chan *GameMessageWrapped
+	stage        Stage
+	dh           DealersHelper
+	players      map[UserDeviceKey]*GamePlayerState
+	gameOutputCh chan GameStateUpdateMessage
+	nPlayers     int
 }
 
 type GamePlayerState struct {
@@ -88,6 +96,13 @@ type GamePlayerState struct {
 	commitment Commitment
 	included   bool
 	secret     *Secret
+}
+
+func (g *Game) GameMetadata() GameMetadata {
+	return GameMetadata{
+		Initiator: g.initiator,
+		GameID:    g.id,
+	}
 }
 
 func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
@@ -118,11 +133,17 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 		doneCh <- game.run(ctx)
 	}()
 	err := <-doneCh
+
 	if err != nil {
 		d.dh.CLogf(ctx, "Error running game %s: %s", key, err.Error())
+		d.gameOutputCh <- GameStateUpdateMessage{
+			Metatdata: game.GameMetadata(),
+			Err:       err,
+		}
 	} else {
 		d.dh.CLogf(ctx, "Game %s ended cleanly", key)
 	}
+
 	d.Lock()
 	defer d.Unlock()
 	close(d.games[key])
@@ -147,19 +168,37 @@ func (g Game) commitmentPayload() CommitmentPayload {
 }
 
 func (g *Game) setSecret(ctx context.Context, ps *GamePlayerState, secret Secret) error {
-	key := ps.ud.ToKey()
 	expected, err := secret.computeCommitment(g.commitmentPayload())
 	if err != nil {
 		return err
 	}
 	if ps.secret != nil {
-		return DuplicateRevealError{G: g.key, U: key}
+		return DuplicateRevealError{G: g.key, U: ps.ud}
 	}
 	if !expected.Eq(ps.commitment) {
-		return BadRevealError{G: g.key, U: key}
+		return BadRevealError{G: g.key, U: ps.ud}
 	}
 	ps.secret = &secret
 	return nil
+}
+
+func (g *Game) finishGame(ctx context.Context) error {
+	var xor Secret
+	for _, ps := range g.players {
+		if !ps.included {
+			continue
+		}
+		if ps.secret == nil {
+			return NoRevealError{G: g.key, U: ps.ud}
+		}
+		xor.XOR(*ps.secret)
+	}
+	NewPRNG(xor)
+	switch {
+
+	}
+	return nil
+
 }
 
 func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
@@ -171,20 +210,23 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		return BadMessageForStageError{MessageType: t, Stage: g.stage}
 	}
 	switch t {
+
 	case MessageType_START:
 		return badStage()
+
 	case MessageType_COMMITMENT:
 		if g.stage != Stage_ROUND1 {
 			return badStage()
 		}
 		key := msg.Header.ToKey()
 		if g.players[key] != nil {
-			return DuplicateRegistrationError{g.key, key}
+			return DuplicateRegistrationError{g.key, msg.Header}
 		}
 		g.players[key] = &GamePlayerState{
 			ud:         msg.Header,
 			commitment: msg.Msg.Body.Commitment(),
 		}
+
 	case MessageType_COMMITMENT_COMPLETE:
 		if g.stage != Stage_ROUND1 {
 			return badStage()
@@ -197,11 +239,17 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			key := u.ToKey()
 			ps := g.players[key]
 			if ps == nil {
-				return UnregisteredUserError{G: g.key, U: key}
+				return UnregisteredUserError{G: g.key, U: u}
 			}
 			ps.included = true
+			g.nPlayers++
 		}
 		g.stage = Stage_ROUND2
+		g.gameOutputCh <- GameStateUpdateMessage{
+			Metatdata: g.GameMetadata(),
+			CC:        &cc,
+		}
+
 	case MessageType_REVEAL:
 		if g.stage != Stage_ROUND2 {
 			return badStage()
@@ -209,7 +257,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		key := msg.Header.ToKey()
 		ps := g.players[key]
 		if ps == nil {
-			return UnregisteredUserError{G: g.key, U: key}
+			return UnregisteredUserError{G: g.key, U: msg.Header}
 		}
 		if !ps.included {
 			g.dh.CLogf(ctx, "Skipping unincluded sender: %s", key)
@@ -219,7 +267,15 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if err != nil {
 			return err
 		}
+		g.nPlayers--
+		if g.nPlayers == 0 {
+			return g.finishGame(ctx)
+		}
+
+	default:
+		return fmt.Errorf("bad message type: %d", t)
 	}
+
 	return nil
 }
 
@@ -248,13 +304,14 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	}
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
-		id:        msg.Msg.GameID,
-		initiator: msg.Header,
-		key:       key,
-		params:    start,
-		msgCh:     msgCh,
-		stage:     Stage_ROUND1,
-		dh:        d.dh,
+		id:           msg.Msg.GameID,
+		initiator:    msg.Header,
+		key:          key,
+		params:       start,
+		msgCh:        msgCh,
+		stage:        Stage_ROUND1,
+		dh:           d.dh,
+		gameOutputCh: d.gameOutputCh,
 	}
 	d.games[key] = msgCh
 	go d.run(ctx, game)
@@ -296,11 +353,11 @@ func NewDealer(dh DealersHelper) *Dealer {
 		dh:           dh,
 		games:        make(map[GameKey](chan<- *GameMessageWrapped)),
 		chatInputCh:  make(chan GameMessageWrappedEncoded),
-		gameOutputCh: make(chan GameStateUpdateMesasge),
+		gameOutputCh: make(chan GameStateUpdateMessage, 5),
 	}
 }
 
-func (d *Dealer) UpdateCh() <-chan GameStateUpdateMesasge {
+func (d *Dealer) UpdateCh() <-chan GameStateUpdateMessage {
 	return d.gameOutputCh
 }
 

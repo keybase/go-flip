@@ -100,20 +100,20 @@ func (b BadUserDeviceError) Error() string {
 
 type DuplicateRegistrationError struct {
 	G GameKey
-	U UserDeviceKey
+	U UserDevice
 }
 
 func (d DuplicateRegistrationError) Error() string {
-	return fmt.Sprintf("User %s registered more than once in game %s", d.G, d.U)
+	return fmt.Sprintf("User %s registered more than once in game %s", d.G, d.U.ToKey())
 }
 
 type UnregisteredUserError struct {
 	G GameKey
-	U UserDeviceKey
+	U UserDevice
 }
 
 func (u UnregisteredUserError) Error() string {
-	return fmt.Sprintf("Initiator announced an unexpected user %s in game %s", u.G, u.U)
+	return fmt.Sprintf("Initiator announced an unexpected user %s in game %s", u.G, u.U.ToKey())
 }
 
 type WrongSenderError struct {
@@ -129,18 +129,27 @@ func (w WrongSenderError) Error() string {
 
 type BadRevealError struct {
 	G GameKey
-	U UserDeviceKey
+	U UserDevice
 }
 
 func (b BadRevealError) Error() string {
-	return fmt.Sprintf("In game %s, bad reveal for %s", b.G, b.U)
+	return fmt.Sprintf("In game %s, bad reveal for %s", b.G, b.U.ToKey())
 }
 
 type DuplicateRevealError struct {
 	G GameKey
-	U UserDeviceKey
+	U UserDevice
 }
 
 func (d DuplicateRevealError) Error() string {
-	return fmt.Sprintf("In game %s, duplicated reveal for%s", d.G, d.U)
+	return fmt.Sprintf("In game %s, duplicated reveal for %s", d.G, d.U.ToKey())
+}
+
+type NoRevealError struct {
+	G GameKey
+	U UserDevice
+}
+
+func (n NoRevealError) Error() string {
+	return fmt.Sprintf("In game %s, no reveal fo %s", n.G, n.U.ToKey())
 }
