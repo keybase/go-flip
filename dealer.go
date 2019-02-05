@@ -304,6 +304,10 @@ func (d *Dealer) UpdateCh() <-chan GameStateUpdateMesasge {
 	return d.gameOutputCh
 }
 
+func (d *Dealer) MessageCh() chan<- GameMessageWrappedEncoded {
+	return d.chatInputCh
+}
+
 func (d *Dealer) Run(ctx context.Context) error {
 	for {
 		var msg GameMessageWrappedEncoded

@@ -26,5 +26,9 @@ func (t *testDealersHelper) CLogf(ctx context.Context, fmtString string, args ..
 func TestDealer(t *testing.T) {
 	dh := newTestDealersHelper()
 	dealer := NewDealer(dh)
+	ctx := context.Background()
+	go func() {
+		dealer.Run(ctx)
+	}()
 	<-dealer.UpdateCh()
 }
