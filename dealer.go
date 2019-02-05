@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	clockwork "github.com/keybase/clockwork"
+	"io"
 	"math/big"
 	"strings"
 	"sync"
@@ -20,19 +21,22 @@ type GameMessageWrapped struct {
 	Msg    GameMessageV1
 }
 
-type Chatter interface {
-	ReadChat(context.Context) (*GameMessageWrappedEncoded, error)
-	SendChat(context.Context, string) error
-	ReportHook(context.Context, GameMessageWrapped)
-	ResultHook(context.Context) (GameMetadata, *Result, error)
+type DealersHelper interface {
 	CLogf(ctx context.Context, fmt string, args ...interface{})
 	Clock() clockwork.Clock
 }
 
+type GameStateUpdateMesasge struct {
+	Metatdata GameMetadata
+	Err       error
+}
+
 type Dealer struct {
 	sync.Mutex
-	chatter Chatter
-	games   map[GameKey](chan<- *GameMessageWrapped)
+	dh           DealersHelper
+	games        map[GameKey](chan<- *GameMessageWrapped)
+	chatInputCh  chan GameMessageWrappedEncoded
+	gameOutputCh chan GameStateUpdateMesasge
 }
 
 type IntResult struct {
@@ -75,7 +79,7 @@ type Game struct {
 	key       GameKey
 	msgCh     <-chan *GameMessageWrapped
 	stage     Stage
-	chatter   Chatter
+	dh        DealersHelper
 	players   map[UserDeviceKey]*GamePlayerState
 }
 
@@ -115,9 +119,9 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 	}()
 	err := <-doneCh
 	if err != nil {
-		d.chatter.CLogf(ctx, "Error running game %s: %s", key, err.Error())
+		d.dh.CLogf(ctx, "Error running game %s: %s", key, err.Error())
 	} else {
-		d.chatter.CLogf(ctx, "Game %s ended cleanly", key)
+		d.dh.CLogf(ctx, "Game %s ended cleanly", key)
 	}
 	d.Lock()
 	defer d.Unlock()
@@ -126,7 +130,7 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 }
 
 func (g *Game) getNextTimer() <-chan time.Time {
-	return g.chatter.Clock().AfterTime(g.nextDeadline())
+	return g.dh.Clock().AfterTime(g.nextDeadline())
 }
 
 func (g *Game) nextDeadline() time.Time {
@@ -149,7 +153,7 @@ func (g *Game) setSecret(ctx context.Context, ps *GamePlayerState, secret Secret
 		return err
 	}
 	if ps.secret != nil {
-		return DuplicateRevealError{G : g.key, U:key}
+		return DuplicateRevealError{G: g.key, U: key}
 	}
 	if !expected.Eq(ps.commitment) {
 		return BadRevealError{G: g.key, U: key}
@@ -208,7 +212,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			return UnregisteredUserError{G: g.key, U: key}
 		}
 		if !ps.included {
-			g.chatter.CLogf(ctx, "Skipping unincluded sender: %s", key)
+			g.dh.CLogf(ctx, "Skipping unincluded sender: %s", key)
 			return nil
 		}
 		err := g.setSecret(ctx, ps, msg.Msg.Body.Reveal())
@@ -250,7 +254,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		params:    start,
 		msgCh:     msgCh,
 		stage:     Stage_ROUND1,
-		chatter:   d.chatter,
+		dh:        d.dh,
 	}
 	d.games[key] = msgCh
 	go d.run(ctx, game)
@@ -269,7 +273,7 @@ func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped)
 	return nil
 }
 
-func (d *Dealer) handleMessage(c context.Context, emsg *GameMessageWrappedEncoded) error {
+func (d *Dealer) handleMessage(c context.Context, emsg GameMessageWrappedEncoded) error {
 	msg, err := emsg.Decode()
 	if err != nil {
 		return err
@@ -287,22 +291,34 @@ func (d *Dealer) handleMessage(c context.Context, emsg *GameMessageWrappedEncode
 	return nil
 }
 
-func NewDealer(c Chatter) *Dealer {
+func NewDealer(dh DealersHelper) *Dealer {
 	return &Dealer{
-		chatter: c,
-		games:   make(map[GameKey](chan<- *GameMessageWrapped)),
+		dh:           dh,
+		games:        make(map[GameKey](chan<- *GameMessageWrapped)),
+		chatInputCh:  make(chan GameMessageWrappedEncoded),
+		gameOutputCh: make(chan GameStateUpdateMesasge),
 	}
+}
+
+func (d *Dealer) UpdateCh() <-chan GameStateUpdateMesasge {
+	return d.gameOutputCh
 }
 
 func (d *Dealer) Run(ctx context.Context) error {
 	for {
-		msg, err := d.chatter.ReadChat(ctx)
-		if err != nil {
-			return err
+		var msg GameMessageWrappedEncoded
+		var ok bool
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok = <-d.chatInputCh:
+			if !ok {
+				return io.EOF
+			}
 		}
-		err = d.handleMessage(ctx, msg)
+		err := d.handleMessage(ctx, msg)
 		if err != nil {
-			d.chatter.CLogf(ctx, "Error reading message: %s", err.Error())
+			d.dh.CLogf(ctx, "Error reading message: %s", err.Error())
 			return err
 		}
 	}
