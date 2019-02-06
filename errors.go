@@ -159,10 +159,18 @@ func (n NoRevealError) Error() string {
 	return fmt.Sprintf("In game %s, no reveal fo %s", n.G, n.U.ToKey())
 }
 
-type BadClockError struct {
+type BadLocalClockError struct {
 	G GameMetadata
 }
 
-func (b BadClockError) Error() string {
-	return fmt.Sprintf("Cannot particpate in game %s due to clock skew", b.G)
+func (b BadLocalClockError) Error() string {
+	return fmt.Sprintf("Cannot particpate in game %s due to local clock skew", b.G)
+}
+
+type BadLeaderClockError struct {
+	G GameMetadata
+}
+
+func (b BadLeaderClockError) Error() string {
+	return fmt.Sprintf("Cannot particpate in game %s due to leader's clock skew", b.G)
 }

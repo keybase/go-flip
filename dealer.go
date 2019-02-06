@@ -25,6 +25,7 @@ type GameMessageWrapped struct {
 type DealersHelper interface {
 	CLogf(ctx context.Context, fmt string, args ...interface{})
 	Clock() clockwork.Clock
+	ServerTime(context.Context) (time.Time, error)
 }
 
 type GameStateUpdateMessage struct {
@@ -70,16 +71,17 @@ type Result struct {
 }
 
 type Game struct {
-	md           GameMetadata
-	clockSkew    Time
-	params       Start
-	key          GameKey
-	msgCh        <-chan *GameMessageWrapped
-	stage        Stage
-	dh           DealersHelper
-	players      map[UserDeviceKey]*GamePlayerState
-	gameOutputCh chan GameStateUpdateMessage
-	nPlayers     int
+	md              GameMetadata
+	leaderClockSkew time.Duration
+	localClockSkew  time.Duration
+	params          Start
+	key             GameKey
+	msgCh           <-chan *GameMessageWrapped
+	stage           Stage
+	dh              DealersHelper
+	players         map[UserDeviceKey]*GamePlayerState
+	gameOutputCh    chan GameStateUpdateMessage
+	nPlayers        int
 }
 
 type GamePlayerState struct {
@@ -318,8 +320,28 @@ func (g *Game) run(ctx context.Context) error {
 	return nil
 }
 
-func (d *Dealer) computeClockSkew(ctx context.Context, t Time) (Time, error) {
-	return Time(0), nil
+func absDuration(d time.Duration) time.Duration {
+	if d < time.Duration(0) {
+		return time.Duration(-1) * d
+	}
+	return d
+}
+
+func (d *Dealer) computeClockSkew(ctx context.Context, md GameMetadata, leaderTime time.Time) (local time.Duration, remote time.Duration, err error) {
+	serverTime, err := d.dh.ServerTime(ctx)
+	localTime := d.dh.Clock().Now()
+
+	leaderSkew := leaderTime.Sub(serverTime)
+	localSkew := localTime.Sub(serverTime)
+
+	if absDuration(localSkew) > MaxClockSkew {
+		return time.Duration(0), time.Duration(0), BadLocalClockError{G: md}
+	}
+	if absDuration(leaderSkew) > MaxClockSkew {
+		return time.Duration(0), time.Duration(0), BadLeaderClockError{G: md}
+	}
+
+	return localSkew, leaderSkew, nil
 }
 
 func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped, start Start) error {
@@ -333,22 +355,23 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	if !msg.Sender.Eq(md.Initiator) {
 		return WrongSenderError{G: md, Expected: msg.Sender, Actual: md.Initiator}
 	}
-	skew, err := d.computeClockSkew(ctx, start.StartTime)
+	lcs, rcs, err := d.computeClockSkew(ctx, md, start.StartTime.Time())
 	if err != nil {
 		return err
 	}
 
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
-		md:           msg.GameMetadata(),
-		clockSkew:    skew,
-		key:          key,
-		params:       start,
-		msgCh:        msgCh,
-		stage:        Stage_ROUND1,
-		dh:           d.dh,
-		gameOutputCh: d.gameOutputCh,
-		players:      make(map[UserDeviceKey]*GamePlayerState),
+		md:              msg.GameMetadata(),
+		localClockSkew:  lcs,
+		leaderClockSkew: rcs,
+		key:             key,
+		params:          start,
+		msgCh:           msgCh,
+		stage:           Stage_ROUND1,
+		dh:              d.dh,
+		gameOutputCh:    d.gameOutputCh,
+		players:         make(map[UserDeviceKey]*GamePlayerState),
 	}
 	d.games[key] = msgCh
 	go d.run(ctx, game)
