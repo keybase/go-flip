@@ -70,7 +70,7 @@ func TestCoinflipHappyPath(t *testing.T) {
 	}()
 
 	leader := newTestUser()
-	params := NewFlipParametersWithInts([]FlipParametersInt{NewFlipParametersIntWithBool()})
+	params := NewFlipParametersWithBool()
 	start := Start{
 		StartTime:            ToTime(dh.clock.Now()),
 		CommitmentWindowMsec: 5 * 1000,

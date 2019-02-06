@@ -59,10 +59,12 @@ func (g GameAlreadyStartedError) Error() string {
 	return fmt.Sprintf("Game already started: %s", g)
 }
 
-type GameFinishedError GameKey
+type GameFinishedError struct {
+	G GameKey
+}
 
 func (g GameFinishedError) Error() string {
-	return fmt.Sprintf("Game is finisehd: %s", g)
+	return fmt.Sprintf("Game is finished: %s", g.G)
 }
 
 type TimeoutError struct {

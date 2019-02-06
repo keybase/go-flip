@@ -143,11 +143,18 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 }
 
 func (g *Game) getNextTimer() <-chan time.Time {
-	return g.dh.Clock().AfterTime(g.nextDeadline())
+	return g.dh.Clock().AfterTime(g.nextDeadline().Time())
 }
 
-func (g *Game) nextDeadline() time.Time {
-	return time.Time{}
+func (g *Game) nextDeadline() Time {
+	switch g.stage {
+	case Stage_ROUND1:
+		return g.params.CommitmentEndTime()
+	case Stage_ROUND2:
+		return g.params.RevealEndTime()
+	default:
+		return Time(0)
+	}
 }
 
 func (g Game) commitmentPayload() CommitmentPayload {
@@ -332,6 +339,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		stage:        Stage_ROUND1,
 		dh:           d.dh,
 		gameOutputCh: d.gameOutputCh,
+		players:      make(map[UserDeviceKey]*GamePlayerState),
 	}
 	d.games[key] = msgCh
 	go d.run(ctx, game)
@@ -344,7 +352,7 @@ func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped)
 	key := msg.GameMetadata().ToKey()
 	game := d.games[key]
 	if game == nil {
-		return GameFinishedError(key)
+		return GameFinishedError{key}
 	}
 	game <- msg
 	return nil
@@ -355,6 +363,7 @@ func (d *Dealer) handleMessage(c context.Context, emsg GameMessageWrappedEncoded
 	if err != nil {
 		return err
 	}
+	fmt.Printf("msg %+v\n", msg)
 	t, err := msg.Msg.Body.T()
 	if err != nil {
 		return err

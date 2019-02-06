@@ -42,3 +42,11 @@ func GenerateGameID() GameID {
 	}
 	return GameID(ret)
 }
+
+func (s Start) CommitmentEndTime() Time {
+	return s.StartTime + Time(s.CommitmentWindowMsec)
+}
+
+func (s Start) RevealEndTime() Time {
+	return s.CommitmentEndTime() + Time(s.RevealWindowMsec)
+}
