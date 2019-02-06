@@ -29,12 +29,10 @@ type DealersHelper interface {
 
 type GameStateUpdateMessage struct {
 	Metatdata GameMetadata
-	Err       error
-
-	// only one of the three, at most, will be true or non-nil
-	CC             *CommitmentComplete
-	RevealComplete bool
-	Result         *Result
+	// only one of the three, at most, will be non-nil
+	Err    error
+	CC     *CommitmentComplete
+	Result *Result
 }
 
 type Dealer struct {
@@ -213,6 +211,11 @@ func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
 		res.Shuffle = prng.Permutation(int(params.Shuffle()))
 	default:
 		return fmt.Errorf("unknown flip type: %s", t)
+	}
+
+	g.gameOutputCh <- GameStateUpdateMessage{
+		Metatdata: g.GameMetadata(),
+		Result:    &res,
 	}
 	return nil
 
