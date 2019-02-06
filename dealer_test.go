@@ -32,10 +32,18 @@ func randBytes(i int) []byte {
 	return ret
 }
 
-func newTestUserDevice() UserDevice {
-	return UserDevice{
-		U: randBytes(6),
-		D: randBytes(6),
+type testUser struct {
+	ud     UserDevice
+	secret Secret
+}
+
+func newTestUser() testUser {
+	return testUser{
+		ud: UserDevice{
+			U: randBytes(6),
+			D: randBytes(6),
+		},
+		secret: GenerateSecret(),
 	}
 }
 
@@ -53,7 +61,7 @@ func newGameMessageWrappedEncoded(t *testing.T, u UserDevice, g GameID, b GameMe
 	}
 }
 
-func TestDealer(t *testing.T) {
+func TestCoinflipHappyPath(t *testing.T) {
 	dh := newTestDealersHelper()
 	dealer := NewDealer(dh)
 	ctx := context.Background()
@@ -61,7 +69,7 @@ func TestDealer(t *testing.T) {
 		dealer.Run(ctx)
 	}()
 
-	leader := newTestUserDevice()
+	leader := newTestUser()
 	params := NewFlipParametersWithInts([]FlipParametersInt{NewFlipParametersIntWithBool()})
 	start := Start{
 		StartTime:            ToTime(dh.clock.Now()),
@@ -72,7 +80,24 @@ func TestDealer(t *testing.T) {
 
 	gameID := GenerateGameID()
 	body := NewGameMessageBodyWithStart(start)
-	gmwe := newGameMessageWrappedEncoded(t, leader, gameID, body)
+	gmwe := newGameMessageWrappedEncoded(t, leader.ud, gameID, body)
+
+	players := []testUser{leader}
+	for i := 0; i < 3; i++ {
+		players = append(players, newTestUser())
+	}
 
 	dealer.MessageCh() <- gmwe
+	cp := CommitmentPayload{
+		V: Version_V1,
+		U: leader.ud,
+		I: gameID,
+		S: start.StartTime,
+	}
+	for _, p := range players {
+		commitment, err := p.secret.computeCommitment(cp)
+		require.NoError(t, err)
+		body := NewGameMessageBodyWithCommitment(commitment)
+		dealer.MessageCh() <- newGameMessageWrappedEncoded(t, p.ud, gameID, body)
+	}
 }

@@ -71,7 +71,7 @@ type TimeoutError struct {
 }
 
 func (t TimeoutError) Error() string {
-	return fmt.Sprintf("Game %s timed out in stage: %d", t.Stage)
+	return fmt.Sprintf("Game %s timed out in stage: %d", t.Key, t.Stage)
 }
 
 type BadMessageForStageError struct {

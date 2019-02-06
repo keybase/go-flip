@@ -2,7 +2,9 @@ package flip
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
+	"fmt"
 )
 
 func (s *Secret) XOR(t Secret) *Secret {
@@ -49,4 +51,16 @@ func (s Secret) computeCommitment(cp CommitmentPayload) (Commitment, error) {
 
 func (c Commitment) Eq(d Commitment) bool {
 	return hmac.Equal(c[:], d[:])
+}
+
+func GenerateSecret() Secret {
+	var ret Secret
+	n, err := rand.Read(ret[:])
+	if n != len(ret) {
+		panic("failed to generate secret; short random read")
+	}
+	if err != nil {
+		panic(fmt.Sprintf("failed to generated secret: %s", err.Error()))
+	}
+	return ret
 }
