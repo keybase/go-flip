@@ -51,6 +51,10 @@ func (g GameMetadata) ToKey() GameKey {
 	return GameKey(strings.Join([]string{g.Initiator.U.String(), g.Initiator.D.String(), g.GameID.String()}, ","))
 }
 
+func (g GameMetadata) String() string {
+	return string(g.ToKey())
+}
+
 type GameKey string
 type UserDeviceKey string
 
@@ -67,6 +71,7 @@ type Result struct {
 
 type Game struct {
 	md           GameMetadata
+	clockSkew    Time
 	params       Start
 	key          GameKey
 	msgCh        <-chan *GameMessageWrapped
@@ -163,10 +168,10 @@ func (g *Game) setSecret(ctx context.Context, ps *GamePlayerState, secret Secret
 		return err
 	}
 	if ps.secret != nil {
-		return DuplicateRevealError{G: g.key, U: ps.ud}
+		return DuplicateRevealError{G: g.md, U: ps.ud}
 	}
 	if !expected.Eq(ps.commitment) {
-		return BadRevealError{G: g.key, U: ps.ud}
+		return BadRevealError{G: g.md, U: ps.ud}
 	}
 	ps.secret = &secret
 	return nil
@@ -179,7 +184,7 @@ func (g *Game) finishGame(ctx context.Context) error {
 			continue
 		}
 		if ps.secret == nil {
-			return NoRevealError{G: g.key, U: ps.ud}
+			return NoRevealError{G: g.md, U: ps.ud}
 		}
 		xor.XOR(*ps.secret)
 	}
@@ -238,7 +243,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		}
 		key := msg.Sender.ToKey()
 		if g.players[key] != nil {
-			return DuplicateRegistrationError{g.key, msg.Sender}
+			return DuplicateRegistrationError{g.md, msg.Sender}
 		}
 		g.players[key] = &GamePlayerState{
 			ud:         msg.Sender,
@@ -250,14 +255,14 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			return badStage()
 		}
 		if !msg.Sender.Eq(g.md.Initiator) {
-			return WrongSenderError{G: g.key, Expected: g.md.Initiator, Actual: msg.Sender}
+			return WrongSenderError{G: g.md, Expected: g.md.Initiator, Actual: msg.Sender}
 		}
 		cc := msg.Msg.Body.CommitmentComplete()
 		for _, u := range cc.Players {
 			key := u.ToKey()
 			ps := g.players[key]
 			if ps == nil {
-				return UnregisteredUserError{G: g.key, U: u}
+				return UnregisteredUserError{G: g.md, U: u}
 			}
 			ps.included = true
 			g.nPlayers++
@@ -275,7 +280,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		key := msg.Sender.ToKey()
 		ps := g.players[key]
 		if ps == nil {
-			return UnregisteredUserError{G: g.key, U: msg.Sender}
+			return UnregisteredUserError{G: g.md, U: msg.Sender}
 		}
 		if !ps.included {
 			g.dh.CLogf(ctx, "Skipping unincluded sender: %s", key)
@@ -302,7 +307,7 @@ func (g *Game) run(ctx context.Context) error {
 		timer := g.getNextTimer()
 		select {
 		case <-timer:
-			return TimeoutError{Key: g.key, Stage: g.stage}
+			return TimeoutError{G: g.md, Stage: g.stage}
 		case msg := <-g.msgCh:
 			err := g.handleMessage(ctx, msg)
 			if err != nil {
@@ -313,19 +318,30 @@ func (g *Game) run(ctx context.Context) error {
 	return nil
 }
 
+func (d *Dealer) computeClockSkew(ctx context.Context, t Time) (Time, error) {
+	return Time(0), nil
+}
+
 func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped, start Start) error {
 	d.Lock()
 	defer d.Unlock()
-	key := msg.GameMetadata().ToKey()
+	md := msg.GameMetadata()
+	key := md.ToKey()
 	if d.games[key] != nil {
-		return GameAlreadyStartedError(key)
+		return GameAlreadyStartedError{G: md}
 	}
-	if !msg.Sender.Eq(msg.GameMetadata().Initiator) {
-		return WrongSenderError{G: key, Expected: msg.Sender, Actual: msg.GameMetadata().Initiator}
+	if !msg.Sender.Eq(md.Initiator) {
+		return WrongSenderError{G: md, Expected: msg.Sender, Actual: md.Initiator}
 	}
+	skew, err := d.computeClockSkew(ctx, start.StartTime)
+	if err != nil {
+		return err
+	}
+
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
 		md:           msg.GameMetadata(),
+		clockSkew:    skew,
 		key:          key,
 		params:       start,
 		msgCh:        msgCh,
@@ -342,10 +358,11 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped) error {
 	d.Lock()
 	defer d.Unlock()
-	key := msg.GameMetadata().ToKey()
+	md := msg.GameMetadata()
+	key := md.ToKey()
 	game := d.games[key]
 	if game == nil {
-		return GameFinishedError{key}
+		return GameFinishedError{G: md}
 	}
 	game <- msg
 	return nil

@@ -53,14 +53,16 @@ func (e Error) Error() string {
 	return fmt.Sprintf("Errors in flip: %s", strings.Join(parts, ";"))
 }
 
-type GameAlreadyStartedError GameKey
+type GameAlreadyStartedError struct {
+	G GameMetadata
+}
 
 func (g GameAlreadyStartedError) Error() string {
-	return fmt.Sprintf("Game already started: %s", g)
+	return fmt.Sprintf("Game already started: %s", g.G)
 }
 
 type GameFinishedError struct {
-	G GameKey
+	G GameMetadata
 }
 
 func (g GameFinishedError) Error() string {
@@ -68,21 +70,22 @@ func (g GameFinishedError) Error() string {
 }
 
 type TimeoutError struct {
-	Key   GameKey
+	G     GameMetadata
 	Stage Stage
 }
 
 func (t TimeoutError) Error() string {
-	return fmt.Sprintf("Game %s timed out in stage: %d", t.Key, t.Stage)
+	return fmt.Sprintf("Game %s timed out in stage: %d", t.G, t.Stage)
 }
 
 type BadMessageForStageError struct {
+	G           GameMetadata
 	MessageType MessageType
 	Stage       Stage
 }
 
 func (b BadMessageForStageError) Error() string {
-	return fmt.Sprintf("Message received (%s) was for wrong stage (%s)", b.MessageType, b.Stage)
+	return fmt.Sprintf("Message received (%s) was for wrong stage (%s) for game %s", b.G, b.MessageType, b.Stage)
 }
 
 type BadVersionError Version
@@ -101,7 +104,7 @@ func (b BadUserDeviceError) Error() string {
 }
 
 type DuplicateRegistrationError struct {
-	G GameKey
+	G GameMetadata
 	U UserDevice
 }
 
@@ -110,7 +113,7 @@ func (d DuplicateRegistrationError) Error() string {
 }
 
 type UnregisteredUserError struct {
-	G GameKey
+	G GameMetadata
 	U UserDevice
 }
 
@@ -119,7 +122,7 @@ func (u UnregisteredUserError) Error() string {
 }
 
 type WrongSenderError struct {
-	G        GameKey
+	G        GameMetadata
 	Expected UserDevice
 	Actual   UserDevice
 }
@@ -130,7 +133,7 @@ func (w WrongSenderError) Error() string {
 }
 
 type BadRevealError struct {
-	G GameKey
+	G GameMetadata
 	U UserDevice
 }
 
@@ -139,7 +142,7 @@ func (b BadRevealError) Error() string {
 }
 
 type DuplicateRevealError struct {
-	G GameKey
+	G GameMetadata
 	U UserDevice
 }
 
@@ -148,10 +151,18 @@ func (d DuplicateRevealError) Error() string {
 }
 
 type NoRevealError struct {
-	G GameKey
+	G GameMetadata
 	U UserDevice
 }
 
 func (n NoRevealError) Error() string {
 	return fmt.Sprintf("In game %s, no reveal fo %s", n.G, n.U.ToKey())
+}
+
+type BadClockError struct {
+	G GameMetadata
+}
+
+func (b BadClockError) Error() string {
+	return fmt.Sprintf("Cannot particpate in game %s due to clock skew", b.G)
 }
