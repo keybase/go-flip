@@ -520,3 +520,7 @@ func (d *Dealer) Run(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (d *Dealer) Stop() {
+	close(d.chatInputCh)
+}

@@ -74,7 +74,16 @@ func newGameMessageWrappedEncoded(t *testing.T, md GameMetadata, sender UserDevi
 	}
 }
 
-func TestCoinflipHappyPath(t *testing.T) {
+func TestCoinflipHappyPath3(t *testing.T) {
+	tester(t, 3, true)
+}
+
+func TestCoinflipHappyPath10(t *testing.T) {
+	tester(t, 10, true)
+}
+
+func tester(t *testing.T, nUsers int, happy bool) {
+
 	dh := newTestDealersHelper()
 	dealer := NewDealer(dh)
 	ctx := context.Background()
@@ -100,7 +109,7 @@ func TestCoinflipHappyPath(t *testing.T) {
 
 	players := []testUser{leader}
 	uds := []UserDevice{leader.ud}
-	for i := 0; i < 3; i++ {
+	for i := 0; i < nUsers; i++ {
 		tu := newTestUser()
 		players = append(players, tu)
 		uds = append(uds, tu.ud)
@@ -137,4 +146,6 @@ func TestCoinflipHappyPath(t *testing.T) {
 	update = <-dealer.UpdateCh()
 	require.NotNil(t, update.Result)
 	require.NotNil(t, update.Result.Bool)
+
+	dealer.Stop()
 }
