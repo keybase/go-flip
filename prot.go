@@ -64,14 +64,14 @@ func (o Start) DeepCopy() Start {
 }
 
 type UserDevice struct {
-	U UID      `codec:"u" json:"u"`
 	D DeviceID `codec:"d" json:"d"`
+	U UID      `codec:"u" json:"u"`
 }
 
 func (o UserDevice) DeepCopy() UserDevice {
 	return UserDevice{
-		U: o.U.DeepCopy(),
 		D: o.D.DeepCopy(),
+		U: o.U.DeepCopy(),
 	}
 }
 
@@ -331,18 +331,18 @@ func (o Commitment) DeepCopy() Commitment {
 }
 
 type CommitmentPayload struct {
-	V Version    `codec:"v" json:"v"`
-	U UserDevice `codec:"u" json:"u"`
 	I GameID     `codec:"i" json:"i"`
 	S Time       `codec:"s" json:"s"`
+	U UserDevice `codec:"u" json:"u"`
+	V Version    `codec:"v" json:"v"`
 }
 
 func (o CommitmentPayload) DeepCopy() CommitmentPayload {
 	return CommitmentPayload{
-		V: o.V.DeepCopy(),
-		U: o.U.DeepCopy(),
 		I: o.I.DeepCopy(),
 		S: o.S.DeepCopy(),
+		U: o.U.DeepCopy(),
+		V: o.V.DeepCopy(),
 	}
 }
 

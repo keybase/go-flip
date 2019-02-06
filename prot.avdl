@@ -26,8 +26,8 @@ protocol flip {
   }
 
   record UserDevice {
-    UID u;
     DeviceID d;
+    UID u;
   }
 
   record GameMetadata {
@@ -69,10 +69,10 @@ protocol flip {
   fixed Commitment(32);
 
   record CommitmentPayload {
-    Version v;
-    UserDevice u;
     GameID i;
     Time s;
+    UserDevice u;
+    Version v;
   }
 
   variant GameMessageBody switch (MessageType t) {
