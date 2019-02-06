@@ -174,3 +174,11 @@ type BadLeaderClockError struct {
 func (b BadLeaderClockError) Error() string {
 	return fmt.Sprintf("Cannot particpate in game %s due to leader's clock skew", b.G)
 }
+
+type GameReplayError struct {
+	G GameID
+}
+
+func (g GameReplayError) Error() string {
+	return fmt.Sprintf("GameID was replayed: %s", g.G)
+}

@@ -26,6 +26,7 @@ type DealersHelper interface {
 	CLogf(ctx context.Context, fmt string, args ...interface{})
 	Clock() clockwork.Clock
 	ServerTime(context.Context) (time.Time, error)
+	ReadHistory(ctx context.Context, since time.Time) ([]GameMessageWrappedEncoded, error)
 }
 
 type GameStateUpdateMessage struct {
@@ -38,10 +39,11 @@ type GameStateUpdateMessage struct {
 
 type Dealer struct {
 	sync.Mutex
-	dh           DealersHelper
-	games        map[GameKey](chan<- *GameMessageWrapped)
-	chatInputCh  chan GameMessageWrappedEncoded
-	gameOutputCh chan GameStateUpdateMessage
+	dh            DealersHelper
+	games         map[GameKey](chan<- *GameMessageWrapped)
+	chatInputCh   chan GameMessageWrappedEncoded
+	gameOutputCh  chan GameStateUpdateMessage
+	previousGames map[GameIDKey]bool
 }
 
 func (g GameMessageWrapped) GameMetadata() GameMetadata {
@@ -57,10 +59,15 @@ func (g GameMetadata) String() string {
 }
 
 type GameKey string
+type GameIDKey string
 type UserDeviceKey string
 
 func (u UserDevice) ToKey() UserDeviceKey {
 	return UserDeviceKey(strings.Join([]string{u.U.String(), u.D.String()}, ","))
+}
+
+func (g GameID) ToKey() GameIDKey {
+	return GameIDKey(g.String())
 }
 
 type Result struct {
@@ -346,6 +353,27 @@ func (d *Dealer) computeClockSkew(ctx context.Context, md GameMetadata, leaderTi
 	return localSkew, leaderSkew, nil
 }
 
+func (d *Dealer) primeHistory(ctx context.Context) (err error) {
+	if d.previousGames != nil {
+		return nil
+	}
+
+	tmp := make(map[GameIDKey]bool)
+	prevs, err := d.dh.ReadHistory(ctx, d.dh.Clock().Now().Add(time.Duration(-2)*MaxClockSkew))
+	if err != nil {
+		return err
+	}
+	for _, m := range prevs {
+		gmw, err := m.Decode()
+		if err != nil {
+			return err
+		}
+		tmp[gmw.Msg.Md.GameID.ToKey()] = true
+	}
+	d.previousGames = tmp
+	return nil
+}
+
 func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped, start Start) error {
 	d.Lock()
 	defer d.Unlock()
@@ -362,6 +390,15 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		return err
 	}
 
+	err = d.primeHistory(ctx)
+	if err != nil {
+		return err
+	}
+
+	if d.previousGames[md.GameID.ToKey()] {
+		return GameReplayError{md.GameID}
+	}
+
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
 		md:              msg.GameMetadata(),
@@ -376,6 +413,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		players:         make(map[UserDeviceKey]*GamePlayerState),
 	}
 	d.games[key] = msgCh
+	d.previousGames[md.GameID.ToKey()] = true
 	go d.run(ctx, game)
 	return nil
 }

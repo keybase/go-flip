@@ -31,6 +31,10 @@ func (t *testDealersHelper) CLogf(ctx context.Context, fmtString string, args ..
 	fmt.Printf(fmtString+"\n", args...)
 }
 
+func (t *testDealersHelper) ReadHistory(ctx context.Context, since time.Time) ([]GameMessageWrappedEncoded, error) {
+	return nil, nil
+}
+
 func randBytes(i int) []byte {
 	ret := make([]byte, i)
 	rand.Read(ret[:])
