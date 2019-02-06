@@ -33,12 +33,13 @@ type DealersHelper interface {
 }
 
 type GameStateUpdateMessage struct {
-	Metatdata GameMetadata
-	// only one of the four, at most, will be non-nil
-	Err      error
-	CC       *CommitmentComplete
-	Result   *Result
-	SendChat *GameMessageEncoded
+	Metadata GameMetadata
+	// only one of the following will be non-nil
+	Err                error
+	Commitment         *UserDevice
+	CommitmentComplete *CommitmentComplete
+	Result             *Result
+	SendChat           *GameMessageEncoded
 }
 
 type Dealer struct {
@@ -150,8 +151,8 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 	if err != nil {
 		d.dh.CLogf(ctx, "Error running game %s: %s", key, err.Error())
 		d.gameOutputCh <- GameStateUpdateMessage{
-			Metatdata: game.GameMetadata(),
-			Err:       err,
+			Metadata: game.GameMetadata(),
+			Err:      err,
 		}
 	} else {
 		d.dh.CLogf(ctx, "Game %s ended cleanly", key)
@@ -258,8 +259,8 @@ func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
 	}
 
 	g.gameOutputCh <- GameStateUpdateMessage{
-		Metatdata: g.GameMetadata(),
-		Result:    &res,
+		Metadata: g.GameMetadata(),
+		Result:   &res,
 	}
 	return nil
 
@@ -295,6 +296,9 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			ud:             msg.Sender,
 			commitment:     msg.Msg.Body.Commitment(),
 			commitmentTime: g.dh.Clock().Now(),
+		}
+		g.gameOutputCh <- GameStateUpdateMessage{
+			Commitment: &msg.Sender,
 		}
 
 	case MessageType_COMMITMENT_COMPLETE:
@@ -357,17 +361,14 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 func (g *Game) commitRound2(cc *CommitmentComplete) {
 	g.stage = Stage_ROUND2
 	g.gameOutputCh <- GameStateUpdateMessage{
-		Metatdata: g.GameMetadata(),
-		CC:        cc,
+		Metadata:           g.GameMetadata(),
+		CommitmentComplete: cc,
 	}
 }
 
 func (g *Game) completeCommitments(ctx context.Context) error {
 	var cc CommitmentComplete
 	for _, p := range g.players {
-		if p.secret == nil {
-			continue
-		}
 		cc.Players = append(cc.Players, p.ud)
 		p.included = true
 		g.nPlayers++
@@ -376,9 +377,10 @@ func (g *Game) completeCommitments(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("ok doing well here: %+v\n", *g)
 	g.gameOutputCh <- GameStateUpdateMessage{
-		Metatdata: g.GameMetadata(),
-		SendChat:  &msg,
+		Metadata: g.GameMetadata(),
+		SendChat: &msg,
 	}
 	g.commitRound2(&cc)
 	return nil
@@ -532,7 +534,7 @@ func NewDealer(dh DealersHelper) *Dealer {
 		dh:           dh,
 		games:        make(map[GameKey](chan<- *GameMessageWrapped)),
 		chatInputCh:  make(chan *GameMessageWrapped),
-		gameOutputCh: make(chan GameStateUpdateMessage, 5),
+		gameOutputCh: make(chan GameStateUpdateMessage, 500),
 	}
 }
 
@@ -568,13 +570,79 @@ func (d *Dealer) Stop() {
 	close(d.chatInputCh)
 }
 
-func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (ret GameMetadata, err error) {
-	ret = GameMetadata{
+type PlayerControl struct {
+	me         UserDevice
+	md         GameMetadata
+	secret     Secret
+	commitment Commitment
+	start      Start
+	dealer     *Dealer
+}
+
+func (d *Dealer) newPlayerControl(me UserDevice, md GameMetadata, start Start) (*PlayerControl, error) {
+	secret := GenerateSecret()
+	cp := CommitmentPayload{
+		V: Version_V1,
+		U: md.Initiator.U,
+		D: md.Initiator.D,
+		C: md.ChannelID,
+		G: md.GameID,
+		S: start.StartTime,
+	}
+	commitment, err := secret.computeCommitment(cp)
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerControl{
+		me:         me,
+		md:         md,
+		secret:     secret,
+		commitment: commitment,
+		start:      start,
+		dealer:     d,
+	}, nil
+}
+
+func (p *PlayerControl) GameMetadata() GameMetadata {
+	return p.md
+}
+
+func (p *PlayerControl) send(body GameMessageBody) {
+	p.dealer.chatInputCh <- &GameMessageWrapped{
+		Sender: p.me,
+		Msg: GameMessageV1{
+			Md:   p.md,
+			Body: body,
+		},
+	}
+}
+
+func (p *PlayerControl) sendCommitment() {
+	p.send(NewGameMessageBodyWithCommitment(p.commitment))
+}
+
+func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc *PlayerControl, err error) {
+	md := GameMetadata{
 		Initiator: d.dh.Me(),
 		ChannelID: chid,
 		GameID:    GenerateGameID(),
 	}
-	return ret, nil
+	body := NewGameMessageBodyWithStart(start)
+	sendChat, err := body.Encode(md)
+	if err != nil {
+		return nil, err
+	}
+	d.gameOutputCh <- GameStateUpdateMessage{
+		Metadata: md,
+		SendChat: &sendChat,
+	}
+	pc, err = d.newPlayerControl(d.dh.Me(), md, start)
+	if err != nil {
+		return nil, err
+	}
+	pc.send(body)
+	pc.sendCommitment()
+	return pc, nil
 }
 
 func (d *Dealer) InjectChatMessage(ctx context.Context, sender UserDevice, body GameMessageEncoded) error {
