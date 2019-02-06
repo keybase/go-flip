@@ -23,7 +23,7 @@ func (t *testDealersHelper) Clock() clockwork.Clock {
 }
 
 func (t *testDealersHelper) CLogf(ctx context.Context, fmtString string, args ...interface{}) {
-	fmt.Printf(fmtString, args...)
+	fmt.Printf(fmtString + "\n", args...)
 }
 
 func randBytes(i int) []byte {

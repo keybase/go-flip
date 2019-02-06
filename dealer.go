@@ -409,7 +409,6 @@ func (d *Dealer) Run(ctx context.Context) error {
 		err := d.handleMessage(ctx, msg)
 		if err != nil {
 			d.dh.CLogf(ctx, "Error reading message: %s", err.Error())
-			return err
 		}
 	}
 	return nil
