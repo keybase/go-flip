@@ -30,9 +30,13 @@ protocol flip {
     DeviceID d;
   }
 
+  record GameMetadata {
+    UserDevice initiator;
+    GameID gameID;
+  }
+
   record CommitmentComplete {
     array<UserDevice> players;
-    Time revealEndTime;
   }
 
   enum FlipType {
@@ -88,7 +92,7 @@ protocol flip {
   }
 
   record GameMessageV1 {
-    GameID gameID;
+    GameMetadata md;
     GameMessageBody body;
   }
 

@@ -13,12 +13,12 @@ import (
 )
 
 type GameMessageWrappedEncoded struct {
-	Header UserDevice
+	Sender UserDevice
 	Body   string // base64-encoded GameMessaageBody that comes in over chat
 }
 
 type GameMessageWrapped struct {
-	Header UserDevice
+	Sender UserDevice
 	Msg    GameMessageV1
 }
 
@@ -43,13 +43,8 @@ type Dealer struct {
 	gameOutputCh chan GameStateUpdateMessage
 }
 
-type GameMetadata struct {
-	GameID    GameID
-	Initiator UserDevice
-}
-
 func (g GameMessageWrapped) GameMetadata() GameMetadata {
-	return GameMetadata{GameID: g.Msg.GameID, Initiator: g.Header}
+	return g.Msg.Md
 }
 
 func (g GameMetadata) ToKey() GameKey {
@@ -71,8 +66,7 @@ type Result struct {
 }
 
 type Game struct {
-	id           GameID
-	initiator    UserDevice
+	md           GameMetadata
 	params       Start
 	key          GameKey
 	msgCh        <-chan *GameMessageWrapped
@@ -91,10 +85,7 @@ type GamePlayerState struct {
 }
 
 func (g *Game) GameMetadata() GameMetadata {
-	return GameMetadata{
-		Initiator: g.initiator,
-		GameID:    g.id,
-	}
+	return g.md
 }
 
 func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
@@ -114,7 +105,7 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	if v != Version_V1 {
 		return nil, BadVersionError(v)
 	}
-	ret := GameMessageWrapped{Header: e.Header, Msg: msg.V1()}
+	ret := GameMessageWrapped{Sender: e.Sender, Msg: msg.V1()}
 	return &ret, nil
 }
 
@@ -160,8 +151,8 @@ func (g *Game) nextDeadline() Time {
 func (g Game) commitmentPayload() CommitmentPayload {
 	return CommitmentPayload{
 		V: Version_V1,
-		U: g.initiator,
-		I: g.id,
+		U: g.md.Initiator,
+		I: g.md.GameID,
 		S: g.params.StartTime,
 	}
 }
@@ -245,12 +236,12 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if g.stage != Stage_ROUND1 {
 			return badStage()
 		}
-		key := msg.Header.ToKey()
+		key := msg.Sender.ToKey()
 		if g.players[key] != nil {
-			return DuplicateRegistrationError{g.key, msg.Header}
+			return DuplicateRegistrationError{g.key, msg.Sender}
 		}
 		g.players[key] = &GamePlayerState{
-			ud:         msg.Header,
+			ud:         msg.Sender,
 			commitment: msg.Msg.Body.Commitment(),
 		}
 
@@ -258,8 +249,8 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if g.stage != Stage_ROUND1 {
 			return badStage()
 		}
-		if !msg.Header.Eq(g.initiator) {
-			return WrongSenderError{G: g.key, Expected: g.initiator, Actual: msg.Header}
+		if !msg.Sender.Eq(g.md.Initiator) {
+			return WrongSenderError{G: g.key, Expected: g.md.Initiator, Actual: msg.Sender}
 		}
 		cc := msg.Msg.Body.CommitmentComplete()
 		for _, u := range cc.Players {
@@ -281,10 +272,10 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if g.stage != Stage_ROUND2 {
 			return badStage()
 		}
-		key := msg.Header.ToKey()
+		key := msg.Sender.ToKey()
 		ps := g.players[key]
 		if ps == nil {
-			return UnregisteredUserError{G: g.key, U: msg.Header}
+			return UnregisteredUserError{G: g.key, U: msg.Sender}
 		}
 		if !ps.included {
 			g.dh.CLogf(ctx, "Skipping unincluded sender: %s", key)
@@ -329,10 +320,12 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	if d.games[key] != nil {
 		return GameAlreadyStartedError(key)
 	}
+	if !msg.Sender.Eq(msg.GameMetadata().Initiator) {
+		return WrongSenderError{G: key, Expected: msg.Sender, Actual: msg.GameMetadata().Initiator}
+	}
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
-		id:           msg.Msg.GameID,
-		initiator:    msg.Header,
+		md:           msg.GameMetadata(),
 		key:          key,
 		params:       start,
 		msgCh:        msgCh,

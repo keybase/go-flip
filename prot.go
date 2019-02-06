@@ -75,9 +75,20 @@ func (o UserDevice) DeepCopy() UserDevice {
 	}
 }
 
+type GameMetadata struct {
+	Initiator UserDevice `codec:"initiator" json:"initiator"`
+	GameID    GameID     `codec:"gameID" json:"gameID"`
+}
+
+func (o GameMetadata) DeepCopy() GameMetadata {
+	return GameMetadata{
+		Initiator: o.Initiator.DeepCopy(),
+		GameID:    o.GameID.DeepCopy(),
+	}
+}
+
 type CommitmentComplete struct {
-	Players       []UserDevice `codec:"players" json:"players"`
-	RevealEndTime Time         `codec:"revealEndTime" json:"revealEndTime"`
+	Players []UserDevice `codec:"players" json:"players"`
 }
 
 func (o CommitmentComplete) DeepCopy() CommitmentComplete {
@@ -93,7 +104,6 @@ func (o CommitmentComplete) DeepCopy() CommitmentComplete {
 			}
 			return ret
 		})(o.Players),
-		RevealEndTime: o.RevealEndTime.DeepCopy(),
 	}
 }
 
@@ -548,14 +558,14 @@ func (o GameMessage) DeepCopy() GameMessage {
 }
 
 type GameMessageV1 struct {
-	GameID GameID          `codec:"gameID" json:"gameID"`
-	Body   GameMessageBody `codec:"body" json:"body"`
+	Md   GameMetadata    `codec:"md" json:"md"`
+	Body GameMessageBody `codec:"body" json:"body"`
 }
 
 func (o GameMessageV1) DeepCopy() GameMessageV1 {
 	return GameMessageV1{
-		GameID: o.GameID.DeepCopy(),
-		Body:   o.Body.DeepCopy(),
+		Md:   o.Md.DeepCopy(),
+		Body: o.Body.DeepCopy(),
 	}
 }
 

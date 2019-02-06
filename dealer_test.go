@@ -23,7 +23,7 @@ func (t *testDealersHelper) Clock() clockwork.Clock {
 }
 
 func (t *testDealersHelper) CLogf(ctx context.Context, fmtString string, args ...interface{}) {
-	fmt.Printf(fmtString + "\n", args...)
+	fmt.Printf(fmtString+"\n", args...)
 }
 
 func randBytes(i int) []byte {
@@ -47,16 +47,16 @@ func newTestUser() testUser {
 	}
 }
 
-func newGameMessageWrappedEncoded(t *testing.T, u UserDevice, g GameID, b GameMessageBody) GameMessageWrappedEncoded {
+func newGameMessageWrappedEncoded(t *testing.T, md GameMetadata, sender UserDevice, b GameMessageBody) GameMessageWrappedEncoded {
 	v1 := GameMessageV1{
-		GameID: g,
-		Body:   b,
+		Md:   md,
+		Body: b,
 	}
 	msg := NewGameMessageWithV1(v1)
 	raw, err := msgpackEncode(msg)
 	require.NoError(t, err)
 	return GameMessageWrappedEncoded{
-		Header: u,
+		Sender: sender,
 		Body:   base64.StdEncoding.EncodeToString(raw),
 	}
 }
@@ -79,12 +79,16 @@ func TestCoinflipHappyPath(t *testing.T) {
 	}
 
 	gameID := GenerateGameID()
+	md := GameMetadata{GameID: gameID, Initiator: leader.ud}
 	body := NewGameMessageBodyWithStart(start)
-	gmwe := newGameMessageWrappedEncoded(t, leader.ud, gameID, body)
+	gmwe := newGameMessageWrappedEncoded(t, md, leader.ud, body)
 
 	players := []testUser{leader}
+	uds := []UserDevice{leader.ud}
 	for i := 0; i < 3; i++ {
-		players = append(players, newTestUser())
+		tu := newTestUser()
+		players = append(players, tu)
+		uds = append(uds, tu.ud)
 	}
 
 	dealer.MessageCh() <- gmwe
@@ -98,6 +102,22 @@ func TestCoinflipHappyPath(t *testing.T) {
 		commitment, err := p.secret.computeCommitment(cp)
 		require.NoError(t, err)
 		body := NewGameMessageBodyWithCommitment(commitment)
-		dealer.MessageCh() <- newGameMessageWrappedEncoded(t, p.ud, gameID, body)
+		dealer.MessageCh() <- newGameMessageWrappedEncoded(t, md, p.ud, body)
 	}
+	dealer.MessageCh() <- newGameMessageWrappedEncoded(t, md, leader.ud,
+		NewGameMessageBodyWithCommitmentComplete(CommitmentComplete{
+			Players: uds,
+		}))
+	update := <-dealer.UpdateCh()
+	require.NotNil(t, update.CC)
+	require.Equal(t, uds, update.CC.Players)
+
+	for _, p := range players {
+		body := NewGameMessageBodyWithReveal(p.secret)
+		dealer.MessageCh() <- newGameMessageWrappedEncoded(t, md, p.ud, body)
+	}
+
+	update = <-dealer.UpdateCh()
+	require.NotNil(t, update.Result)
+	require.NotNil(t, update.Result.Bool)
 }
