@@ -14,6 +14,9 @@ protocol flip {
   record UID {}
 
   @typedef("bytes")
+  record ChannelID {}
+
+  @typedef("bytes")
   record DeviceID {}
 
   record Start {
@@ -32,6 +35,7 @@ protocol flip {
 
   record GameMetadata {
     UserDevice initiator;
+    ChannelID channelID;
     GameID gameID;
   }
 
@@ -67,13 +71,6 @@ protocol flip {
 
   fixed Secret(32);
   fixed Commitment(32);
-
-  record CommitmentPayload {
-    GameID i;
-    Time s;
-    UserDevice u;
-    Version v;
-  }
 
   variant GameMessageBody switch (MessageType t) {
     case START: Start;

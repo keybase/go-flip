@@ -36,6 +36,16 @@ func (s Secret) Eq(t Secret) bool {
 	return hmac.Equal(s[:], t[:])
 }
 
+type CommitmentPayload struct {
+	_struct bool      `codec:",toarray"`
+	V       Version   `codec:"v" json:"v"`
+	U       UID       `codec:"u" json:"u"`
+	D       DeviceID  `codec:"d" json:"d"`
+	C       ChannelID `codec:"c" json:"c"`
+	G       GameID    `codec:"i" json:"i"`
+	S       Time      `codec:"s" json:"s"`
+}
+
 func (s Secret) computeCommitment(cp CommitmentPayload) (Commitment, error) {
 	var ret Commitment
 	hm := hmac.New(sha256.New, s[:])

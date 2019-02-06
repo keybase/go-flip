@@ -8,6 +8,7 @@ import (
 	clockwork "github.com/keybase/clockwork"
 	"github.com/stretchr/testify/require"
 	"testing"
+	"time"
 )
 
 type testDealersHelper struct {
@@ -20,6 +21,10 @@ func newTestDealersHelper() *testDealersHelper {
 
 func (t *testDealersHelper) Clock() clockwork.Clock {
 	return t.clock
+}
+
+func (t *testDealersHelper) ServerTime(context.Context) (time.Time, error) {
+	return t.clock.Now(), nil
 }
 
 func (t *testDealersHelper) CLogf(ctx context.Context, fmtString string, args ...interface{}) {
@@ -79,7 +84,8 @@ func TestCoinflipHappyPath(t *testing.T) {
 	}
 
 	gameID := GenerateGameID()
-	md := GameMetadata{GameID: gameID, Initiator: leader.ud}
+	channelID := ChannelID(randBytes(6))
+	md := GameMetadata{GameID: gameID, ChannelID: channelID, Initiator: leader.ud}
 	body := NewGameMessageBodyWithStart(start)
 	gmwe := newGameMessageWrappedEncoded(t, md, leader.ud, body)
 
@@ -94,8 +100,10 @@ func TestCoinflipHappyPath(t *testing.T) {
 	dealer.MessageCh() <- gmwe
 	cp := CommitmentPayload{
 		V: Version_V1,
-		U: leader.ud,
-		I: gameID,
+		U: leader.ud.U,
+		D: leader.ud.D,
+		C: channelID,
+		G: gameID,
 		S: start.StartTime,
 	}
 	for _, p := range players {

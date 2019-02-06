@@ -36,6 +36,17 @@ func (o UID) DeepCopy() UID {
 	})(o)
 }
 
+type ChannelID []byte
+
+func (o ChannelID) DeepCopy() ChannelID {
+	return (func(x []byte) []byte {
+		if x == nil {
+			return nil
+		}
+		return append([]byte{}, x...)
+	})(o)
+}
+
 type DeviceID []byte
 
 func (o DeviceID) DeepCopy() DeviceID {
@@ -77,12 +88,14 @@ func (o UserDevice) DeepCopy() UserDevice {
 
 type GameMetadata struct {
 	Initiator UserDevice `codec:"initiator" json:"initiator"`
+	ChannelID ChannelID  `codec:"channelID" json:"channelID"`
 	GameID    GameID     `codec:"gameID" json:"gameID"`
 }
 
 func (o GameMetadata) DeepCopy() GameMetadata {
 	return GameMetadata{
 		Initiator: o.Initiator.DeepCopy(),
+		ChannelID: o.ChannelID.DeepCopy(),
 		GameID:    o.GameID.DeepCopy(),
 	}
 }
@@ -328,22 +341,6 @@ func (o Commitment) DeepCopy() Commitment {
 	var ret Commitment
 	copy(ret[:], o[:])
 	return ret
-}
-
-type CommitmentPayload struct {
-	I GameID     `codec:"i" json:"i"`
-	S Time       `codec:"s" json:"s"`
-	U UserDevice `codec:"u" json:"u"`
-	V Version    `codec:"v" json:"v"`
-}
-
-func (o CommitmentPayload) DeepCopy() CommitmentPayload {
-	return CommitmentPayload{
-		I: o.I.DeepCopy(),
-		S: o.S.DeepCopy(),
-		U: o.U.DeepCopy(),
-		V: o.V.DeepCopy(),
-	}
 }
 
 type GameMessageBody struct {

@@ -49,7 +49,7 @@ func (g GameMessageWrapped) GameMetadata() GameMetadata {
 }
 
 func (g GameMetadata) ToKey() GameKey {
-	return GameKey(strings.Join([]string{g.Initiator.U.String(), g.Initiator.D.String(), g.GameID.String()}, ","))
+	return GameKey(strings.Join([]string{g.Initiator.U.String(), g.Initiator.D.String(), g.ChannelID.String(), g.GameID.String()}, ","))
 }
 
 func (g GameMetadata) String() string {
@@ -158,8 +158,10 @@ func (g *Game) nextDeadline() Time {
 func (g Game) commitmentPayload() CommitmentPayload {
 	return CommitmentPayload{
 		V: Version_V1,
-		U: g.md.Initiator,
-		I: g.md.GameID,
+		U: g.md.Initiator.U,
+		D: g.md.Initiator.D,
+		C: g.md.ChannelID,
+		G: g.md.GameID,
 		S: g.params.StartTime,
 	}
 }
