@@ -24,6 +24,10 @@ func (t Time) Time() time.Time {
 	return time.Unix(0, int64(t)*1000000)
 }
 
+func (t Time) Duration() time.Duration {
+	return time.Duration(t) / time.Millisecond
+}
+
 func ToTime(t time.Time) Time {
 	if t.IsZero() {
 		return 0
@@ -44,10 +48,10 @@ func GenerateGameID() GameID {
 	return GameID(ret)
 }
 
-func (s Start) CommitmentEndTime() Time {
-	return s.StartTime + Time(s.CommitmentWindowMsec)
+func (s Start) CommitmentWindowWithSlack() time.Duration {
+	return Time(s.CommitmentWindowMsec + s.SlackMsec).Duration()
 }
 
-func (s Start) RevealEndTime() Time {
-	return s.CommitmentEndTime() + Time(s.RevealWindowMsec)
+func (s Start) RevealWindowWithSlack() time.Duration {
+	return Time(s.CommitmentWindowMsec + s.RevealWindowMsec + 2*s.SlackMsec).Duration()
 }

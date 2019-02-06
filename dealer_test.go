@@ -35,6 +35,10 @@ func (t *testDealersHelper) ReadHistory(ctx context.Context, since time.Time) ([
 	return nil, nil
 }
 
+func (t *testDealersHelper) Me() UserDevice {
+	return newTestUser().ud
+}
+
 func randBytes(i int) []byte {
 	ret := make([]byte, i)
 	rand.Read(ret[:])

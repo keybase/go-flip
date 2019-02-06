@@ -27,6 +27,7 @@ type DealersHelper interface {
 	Clock() clockwork.Clock
 	ServerTime(context.Context) (time.Time, error)
 	ReadHistory(ctx context.Context, since time.Time) ([]GameMessageWrappedEncoded, error)
+	Me() UserDevice
 }
 
 type GameStateUpdateMessage struct {
@@ -80,6 +81,8 @@ type Result struct {
 type Game struct {
 	md           GameMetadata
 	clockSkew    time.Duration
+	start        time.Time
+	isLeader     bool
 	params       Start
 	key          GameKey
 	msgCh        <-chan *GameMessageWrapped
@@ -148,17 +151,31 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 }
 
 func (g *Game) getNextTimer() <-chan time.Time {
-	return g.dh.Clock().AfterTime(g.nextDeadline().Time())
+	return g.dh.Clock().AfterTime(g.nextDeadline())
 }
 
-func (g *Game) nextDeadline() Time {
+func (g *Game) CommitmentEndTime() time.Time {
+	// If we're the leader, then let's cut off when we say we're going to cut off
+	// If we're not, then let's give extra time (a multiple of 2) to the leader.
+	mul := time.Duration(1)
+	if !g.isLeader {
+		mul = time.Duration(2)
+	}
+	return g.start.Add(mul * g.params.CommitmentWindowWithSlack())
+}
+
+func (g *Game) RevealEndTime() time.Time {
+	return g.start.Add(g.params.RevealWindowWithSlack())
+}
+
+func (g *Game) nextDeadline() time.Time {
 	switch g.stage {
 	case Stage_ROUND1:
-		return g.params.CommitmentEndTime()
+		return g.CommitmentEndTime()
 	case Stage_ROUND2:
-		return g.params.RevealEndTime()
+		return g.RevealEndTime()
 	default:
-		return Time(0)
+		return time.Time{}
 	}
 }
 
@@ -235,6 +252,11 @@ func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
 
 }
 
+func (g *Game) playerCommitedInTime(ps *GamePlayerState, now time.Time) bool {
+	diff := ps.commitmentTime.Sub(g.start)
+	return diff < g.params.CommitmentWindowWithSlack()
+}
+
 func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
 	t, err := msg.Msg.Body.T()
 	if err != nil {
@@ -269,6 +291,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if !msg.Sender.Eq(g.md.Initiator) {
 			return WrongSenderError{G: g.md, Expected: g.md.Initiator, Actual: msg.Sender}
 		}
+		now := g.dh.Clock().Now()
 		cc := msg.Msg.Body.CommitmentComplete()
 		for _, u := range cc.Players {
 			key := u.ToKey()
@@ -279,6 +302,14 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			ps.included = true
 			g.nPlayers++
 		}
+
+		// for now, just warn if users who made it in on time weren't included.
+		for _, ps := range g.players {
+			if !ps.included && g.playerCommitedInTime(ps, now) {
+				g.dh.CLogf(ctx, "User %s wasn't included, but they should have been", ps.ud)
+			}
+		}
+
 		g.stage = Stage_ROUND2
 		g.gameOutputCh <- GameStateUpdateMessage{
 			Metatdata: g.GameMetadata(),
@@ -404,7 +435,9 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
 		md:           msg.GameMetadata(),
+		isLeader:     d.dh.Me().Eq(msg.Sender),
 		clockSkew:    cs,
+		start:        d.dh.Clock().Now(),
 		key:          key,
 		params:       start,
 		msgCh:        msgCh,

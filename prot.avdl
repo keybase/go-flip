@@ -25,6 +25,8 @@ protocol flip {
     long commitmentWindowMsec;
     // How long the reveal window lasts
     long revealWindowMsec;
+    // How much slack to give before warning
+    long slackMsec;
     FlipParameters params;
   }
 
