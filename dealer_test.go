@@ -13,6 +13,7 @@ import (
 
 type testDealersHelper struct {
 	clock clockwork.FakeClock
+	me    UserDevice
 }
 
 func newTestDealersHelper() *testDealersHelper {
@@ -36,7 +37,7 @@ func (t *testDealersHelper) ReadHistory(ctx context.Context, since time.Time) ([
 }
 
 func (t *testDealersHelper) Me() UserDevice {
-	return newTestUser().ud
+	return t.me
 }
 
 func randBytes(i int) []byte {
@@ -70,19 +71,18 @@ func newGameMessageWrappedEncoded(t *testing.T, md GameMetadata, sender UserDevi
 	require.NoError(t, err)
 	return GameMessageWrappedEncoded{
 		Sender: sender,
-		Body:   base64.StdEncoding.EncodeToString(raw),
+		Body:   GameMessageEncoded(base64.StdEncoding.EncodeToString(raw)),
 	}
 }
 
-func TestCoinflipHappyPath3(t *testing.T)  { happyTester(t, 3) }
-func TestCoinflipHappyPath10(t *testing.T) { happyTester(t, 10) }
+func TestCoinflipHappyPath3(t *testing.T)  { happyFollower(t, 3) }
+func TestCoinflipHappyPath10(t *testing.T) { happyFollower(t, 10) }
 
 type testBundle struct {
 	dh        *testDealersHelper
 	dealer    *Dealer
 	gameID    GameID
 	channelID ChannelID
-	md        GameMetadata
 	leader    testUser
 	players   []testUser
 	start     Start
@@ -100,7 +100,7 @@ func (b *testBundle) run(ctx context.Context) {
 	go b.dealer.Run(ctx)
 }
 
-func setupTestBundle(ctx context.Context, t *testing.T, nUsers int) *testBundle {
+func setupTestBundle(ctx context.Context, t *testing.T, nUsers int, isLeader bool) *testBundle {
 	dh := newTestDealersHelper()
 	dealer := NewDealer(dh)
 
@@ -116,23 +116,33 @@ func setupTestBundle(ctx context.Context, t *testing.T, nUsers int) *testBundle 
 
 	gameID := GenerateGameID()
 	channelID := ChannelID(randBytes(6))
-	md := GameMetadata{GameID: gameID, ChannelID: channelID, Initiator: leader.ud}
 
 	players := []testUser{leader}
+	var last testUser
 	for i := 0; i < nUsers; i++ {
 		tu := newTestUser()
 		players = append(players, tu)
+		last = tu
 	}
+	if isLeader {
+		dh.me = leader.ud
+	} else {
+		dh.me = last.ud
+	}
+
 	return &testBundle{
 		dh:        dh,
 		dealer:    dealer,
 		gameID:    gameID,
 		channelID: channelID,
-		md:        md,
 		leader:    leader,
 		players:   players,
 		start:     start,
 	}
+}
+
+func (b *testBundle) md() GameMetadata {
+	return GameMetadata{GameID: b.gameID, ChannelID: b.channelID, Initiator: b.leader.ud}
 }
 
 func (b *testBundle) commitPhase(ctx context.Context, t *testing.T) {
@@ -148,18 +158,18 @@ func (b *testBundle) commitPhase(ctx context.Context, t *testing.T) {
 		commitment, err := p.secret.computeCommitment(cp)
 		require.NoError(t, err)
 		body := NewGameMessageBodyWithCommitment(commitment)
-		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, p.ud, body)
+		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), p.ud, body)
 	}
 }
 
 func (b *testBundle) startPhase(ctx context.Context, t *testing.T) {
 	body := NewGameMessageBodyWithStart(b.start)
-	gmwe := newGameMessageWrappedEncoded(t, b.md, b.leader.ud, body)
+	gmwe := newGameMessageWrappedEncoded(t, b.md(), b.leader.ud, body)
 	b.dealer.MessageCh() <- gmwe
 }
 
 func (b *testBundle) completeCommit(ctx context.Context, t *testing.T) {
-	b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, b.leader.ud,
+	b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), b.leader.ud,
 		NewGameMessageBodyWithCommitmentComplete(CommitmentComplete{
 			Players: b.userDevices(),
 		}))
@@ -171,7 +181,7 @@ func (b *testBundle) completeCommit(ctx context.Context, t *testing.T) {
 func (b *testBundle) revealPhase(ctx context.Context, t *testing.T) {
 	for _, p := range b.players {
 		body := NewGameMessageBodyWithReveal(p.secret)
-		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, p.ud, body)
+		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), p.ud, body)
 	}
 	update := <-b.dealer.UpdateCh()
 	require.NotNil(t, update.Result)
@@ -182,31 +192,43 @@ func (b *testBundle) stop() {
 	b.dealer.Stop()
 }
 
-func happyTester(t *testing.T, nUsers int) {
+func happyFollower(t *testing.T, nUsers int) {
 	ctx := context.Background()
-	b := setupTestBundle(ctx, t, nUsers)
+	b := setupTestBundle(ctx, t, nUsers, false)
 	b.run(ctx)
+	defer b.stop()
+
 	b.startPhase(ctx, t)
 	b.commitPhase(ctx, t)
 	b.completeCommit(ctx, t)
 	b.revealPhase(ctx, t)
-	b.stop()
 }
 
 func TestDroppedReveal(t *testing.T) {
 	ctx := context.Background()
-	b := setupTestBundle(ctx, t, 3)
+	b := setupTestBundle(ctx, t, 3, false)
 	b.run(ctx)
+	defer b.stop()
+
 	b.startPhase(ctx, t)
 	b.commitPhase(ctx, t)
 	b.completeCommit(ctx, t)
 
 	for _, p := range b.players[0 : len(b.players)-1] {
 		body := NewGameMessageBodyWithReveal(p.secret)
-		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, p.ud, body)
+		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), p.ud, body)
 	}
 	b.dh.clock.Advance(time.Duration(13) * time.Second)
 	update := <-b.dealer.UpdateCh()
 	fmt.Printf("%+v\n", update)
-	b.stop()
+}
+
+func TestLeader(t *testing.T) {
+	ctx := context.Background()
+	b := setupTestBundle(ctx, t, 3, true)
+	b.run(ctx)
+	defer b.stop()
+	ret, err := b.dealer.StartFlip(ctx, b.start, b.channelID)
+	b.gameID = ret.GameID
+	require.NoError(t, err)
 }

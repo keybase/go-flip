@@ -12,9 +12,11 @@ import (
 	"time"
 )
 
+type GameMessageEncoded string
+
 type GameMessageWrappedEncoded struct {
 	Sender UserDevice
-	Body   string // base64-encoded GameMessaageBody that comes in over chat
+	Body   GameMessageEncoded // base64-encoded GameMessaageBody that comes in over chat
 }
 
 type GameMessageWrapped struct {
@@ -32,10 +34,11 @@ type DealersHelper interface {
 
 type GameStateUpdateMessage struct {
 	Metatdata GameMetadata
-	// only one of the three, at most, will be non-nil
-	Err    error
-	CC     *CommitmentComplete
-	Result *Result
+	// only one of the four, at most, will be non-nil
+	Err      error
+	CC       *CommitmentComplete
+	Result   *Result
+	SendChat *GameMessageEncoded
 }
 
 type Dealer struct {
@@ -106,7 +109,7 @@ func (g *Game) GameMetadata() GameMetadata {
 }
 
 func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
-	raw, err := base64.StdEncoding.DecodeString(e.Body)
+	raw, err := base64.StdEncoding.DecodeString(string(e.Body))
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +127,16 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	}
 	ret := GameMessageWrapped{Sender: e.Sender, Msg: msg.V1()}
 	return &ret, nil
+}
+
+func (w GameMessageBody) Encode(md GameMetadata) (GameMessageEncoded, error) {
+	v1 := GameMessageV1{Md: md, Body: w}
+	msg := NewGameMessageWithV1(v1)
+	raw, err := msgpackEncode(msg)
+	if err != nil {
+		return GameMessageEncoded(""), err
+	}
+	return GameMessageEncoded(base64.StdEncoding.EncodeToString(raw)), nil
 }
 
 func (d *Dealer) run(ctx context.Context, game *Game) {
@@ -359,6 +372,14 @@ func (g *Game) completeCommitments(ctx context.Context) error {
 		p.included = true
 		g.nPlayers++
 	}
+	msg, err := NewGameMessageBodyWithCommitmentComplete(cc).Encode(g.GameMetadata())
+	if err != nil {
+		return err
+	}
+	g.gameOutputCh <- GameStateUpdateMessage{
+		Metatdata: g.GameMetadata(),
+		SendChat:  &msg,
+	}
 	g.commitRound2(&cc)
 	return nil
 }
@@ -549,4 +570,13 @@ func (d *Dealer) Run(ctx context.Context) error {
 
 func (d *Dealer) Stop() {
 	close(d.chatInputCh)
+}
+
+func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (ret GameMetadata, err error) {
+	ret = GameMetadata{
+		Initiator: d.dh.Me(),
+		ChannelID: chid,
+		GameID:    GenerateGameID(),
+	}
+	return ret, nil
 }
