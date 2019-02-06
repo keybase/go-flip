@@ -88,6 +88,7 @@ func TestCoinflipHappyPath(t *testing.T) {
 		StartTime:            ToTime(dh.clock.Now()),
 		CommitmentWindowMsec: 5 * 1000,
 		RevealWindowMsec:     5 * 1000,
+		SlackMsec:            1 * 1000,
 		Params:               params,
 	}
 

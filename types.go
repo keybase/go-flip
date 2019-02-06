@@ -25,7 +25,7 @@ func (t Time) Time() time.Time {
 }
 
 func (t Time) Duration() time.Duration {
-	return time.Duration(t) / time.Millisecond
+	return time.Duration(t) * time.Millisecond
 }
 
 func ToTime(t time.Time) Time {
