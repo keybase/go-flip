@@ -100,20 +100,26 @@ func (o CommitmentComplete) DeepCopy() CommitmentComplete {
 type FlipType int
 
 const (
-	FlipType_INTS    FlipType = 1
-	FlipType_SHUFFLE FlipType = 2
+	FlipType_BOOL    FlipType = 1
+	FlipType_INT     FlipType = 2
+	FlipType_BIG     FlipType = 3
+	FlipType_SHUFFLE FlipType = 4
 )
 
 func (o FlipType) DeepCopy() FlipType { return o }
 
 var FlipTypeMap = map[string]FlipType{
-	"INTS":    1,
-	"SHUFFLE": 2,
+	"BOOL":    1,
+	"INT":     2,
+	"BIG":     3,
+	"SHUFFLE": 4,
 }
 
 var FlipTypeRevMap = map[FlipType]string{
-	1: "INTS",
-	2: "SHUFFLE",
+	1: "BOOL",
+	2: "INT",
+	3: "BIG",
+	4: "SHUFFLE",
 }
 
 func (e FlipType) String() string {
@@ -123,133 +129,23 @@ func (e FlipType) String() string {
 	return ""
 }
 
-type IntType int
-
-const (
-	IntType_FIXED IntType = 1
-	IntType_BIG   IntType = 2
-	IntType_BOOL  IntType = 3
-)
-
-func (o IntType) DeepCopy() IntType { return o }
-
-var IntTypeMap = map[string]IntType{
-	"FIXED": 1,
-	"BIG":   2,
-	"BOOL":  3,
-}
-
-var IntTypeRevMap = map[IntType]string{
-	1: "FIXED",
-	2: "BIG",
-	3: "BOOL",
-}
-
-func (e IntType) String() string {
-	if v, ok := IntTypeRevMap[e]; ok {
-		return v
-	}
-	return ""
-}
-
-type FlipParametersInt struct {
-	T__     IntType `codec:"t" json:"t"`
-	Big__   *[]byte `codec:"big,omitempty" json:"big,omitempty"`
-	Fixed__ *int64  `codec:"fixed,omitempty" json:"fixed,omitempty"`
-}
-
-func (o *FlipParametersInt) T() (ret IntType, err error) {
-	switch o.T__ {
-	case IntType_BIG:
-		if o.Big__ == nil {
-			err = errors.New("unexpected nil value for Big__")
-			return ret, err
-		}
-	case IntType_FIXED:
-		if o.Fixed__ == nil {
-			err = errors.New("unexpected nil value for Fixed__")
-			return ret, err
-		}
-	}
-	return o.T__, nil
-}
-
-func (o FlipParametersInt) Big() (res []byte) {
-	if o.T__ != IntType_BIG {
-		panic("wrong case accessed")
-	}
-	if o.Big__ == nil {
-		return
-	}
-	return *o.Big__
-}
-
-func (o FlipParametersInt) Fixed() (res int64) {
-	if o.T__ != IntType_FIXED {
-		panic("wrong case accessed")
-	}
-	if o.Fixed__ == nil {
-		return
-	}
-	return *o.Fixed__
-}
-
-func NewFlipParametersIntWithBig(v []byte) FlipParametersInt {
-	return FlipParametersInt{
-		T__:   IntType_BIG,
-		Big__: &v,
-	}
-}
-
-func NewFlipParametersIntWithFixed(v int64) FlipParametersInt {
-	return FlipParametersInt{
-		T__:     IntType_FIXED,
-		Fixed__: &v,
-	}
-}
-
-func NewFlipParametersIntWithBool() FlipParametersInt {
-	return FlipParametersInt{
-		T__: IntType_BOOL,
-	}
-}
-
-func (o FlipParametersInt) DeepCopy() FlipParametersInt {
-	return FlipParametersInt{
-		T__: o.T__.DeepCopy(),
-		Big__: (func(x *[]byte) *[]byte {
-			if x == nil {
-				return nil
-			}
-			tmp := (func(x []byte) []byte {
-				if x == nil {
-					return nil
-				}
-				return append([]byte{}, x...)
-			})((*x))
-			return &tmp
-		})(o.Big__),
-		Fixed__: (func(x *int64) *int64 {
-			if x == nil {
-				return nil
-			}
-			tmp := (*x)
-			return &tmp
-		})(o.Fixed__),
-	}
-}
-
 type FlipParameters struct {
-	T__       FlipType             `codec:"t" json:"t"`
-	Ints__    *[]FlipParametersInt `codec:"ints,omitempty" json:"ints,omitempty"`
-	Shuffle__ *int64               `codec:"shuffle,omitempty" json:"shuffle,omitempty"`
+	T__       FlipType `codec:"t" json:"t"`
+	Int__     *int64   `codec:"int,omitempty" json:"int,omitempty"`
+	Big__     *[]byte  `codec:"big,omitempty" json:"big,omitempty"`
+	Shuffle__ *int64   `codec:"shuffle,omitempty" json:"shuffle,omitempty"`
 }
 
 func (o *FlipParameters) T() (ret FlipType, err error) {
 	switch o.T__ {
-	case FlipType_INTS:
-		if o.Ints__ == nil {
-			err = errors.New("unexpected nil value for Ints__")
+	case FlipType_INT:
+		if o.Int__ == nil {
+			err = errors.New("unexpected nil value for Int__")
+			return ret, err
+		}
+	case FlipType_BIG:
+		if o.Big__ == nil {
+			err = errors.New("unexpected nil value for Big__")
 			return ret, err
 		}
 	case FlipType_SHUFFLE:
@@ -261,14 +157,24 @@ func (o *FlipParameters) T() (ret FlipType, err error) {
 	return o.T__, nil
 }
 
-func (o FlipParameters) Ints() (res []FlipParametersInt) {
-	if o.T__ != FlipType_INTS {
+func (o FlipParameters) Int() (res int64) {
+	if o.T__ != FlipType_INT {
 		panic("wrong case accessed")
 	}
-	if o.Ints__ == nil {
+	if o.Int__ == nil {
 		return
 	}
-	return *o.Ints__
+	return *o.Int__
+}
+
+func (o FlipParameters) Big() (res []byte) {
+	if o.T__ != FlipType_BIG {
+		panic("wrong case accessed")
+	}
+	if o.Big__ == nil {
+		return
+	}
+	return *o.Big__
 }
 
 func (o FlipParameters) Shuffle() (res int64) {
@@ -281,10 +187,23 @@ func (o FlipParameters) Shuffle() (res int64) {
 	return *o.Shuffle__
 }
 
-func NewFlipParametersWithInts(v []FlipParametersInt) FlipParameters {
+func NewFlipParametersWithBool() FlipParameters {
 	return FlipParameters{
-		T__:    FlipType_INTS,
-		Ints__: &v,
+		T__: FlipType_BOOL,
+	}
+}
+
+func NewFlipParametersWithInt(v int64) FlipParameters {
+	return FlipParameters{
+		T__:   FlipType_INT,
+		Int__: &v,
+	}
+}
+
+func NewFlipParametersWithBig(v []byte) FlipParameters {
+	return FlipParameters{
+		T__:   FlipType_BIG,
+		Big__: &v,
 	}
 }
 
@@ -298,23 +217,25 @@ func NewFlipParametersWithShuffle(v int64) FlipParameters {
 func (o FlipParameters) DeepCopy() FlipParameters {
 	return FlipParameters{
 		T__: o.T__.DeepCopy(),
-		Ints__: (func(x *[]FlipParametersInt) *[]FlipParametersInt {
+		Int__: (func(x *int64) *int64 {
 			if x == nil {
 				return nil
 			}
-			tmp := (func(x []FlipParametersInt) []FlipParametersInt {
+			tmp := (*x)
+			return &tmp
+		})(o.Int__),
+		Big__: (func(x *[]byte) *[]byte {
+			if x == nil {
+				return nil
+			}
+			tmp := (func(x []byte) []byte {
 				if x == nil {
 					return nil
 				}
-				ret := make([]FlipParametersInt, len(x))
-				for i, v := range x {
-					vCopy := v.DeepCopy()
-					ret[i] = vCopy
-				}
-				return ret
+				return append([]byte{}, x...)
 			})((*x))
 			return &tmp
-		})(o.Ints__),
+		})(o.Big__),
 		Shuffle__: (func(x *int64) *int64 {
 			if x == nil {
 				return nil

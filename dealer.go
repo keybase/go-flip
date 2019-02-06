@@ -45,14 +45,6 @@ type Dealer struct {
 	gameOutputCh chan GameStateUpdateMessage
 }
 
-type IntResult struct {
-	b   *bool
-	i   *int64
-	big *big.Int
-}
-
-type Permutation []int
-
 type GameMetadata struct {
 	GameID    GameID
 	Initiator UserDevice
@@ -74,8 +66,10 @@ func (u UserDevice) ToKey() UserDeviceKey {
 }
 
 type Result struct {
-	P Permutation
-	I []IntResult
+	Shuffle []int
+	Bool    *bool
+	Int     *int64
+	Big     *big.Int
 }
 
 type Game struct {
@@ -193,9 +187,32 @@ func (g *Game) finishGame(ctx context.Context) error {
 		}
 		xor.XOR(*ps.secret)
 	}
-	NewPRNG(xor)
-	switch {
+	prng := NewPRNG(xor)
+	return g.doFlip(ctx, prng)
+}
 
+func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
+	params := g.params.Params
+	t, err := params.T()
+	if err != nil {
+		return err
+	}
+	var res Result
+	switch t {
+	case FlipType_BOOL:
+		tmp := prng.Bool()
+		res.Bool = &tmp
+	case FlipType_INT:
+		tmp := prng.Int(params.Int())
+		res.Int = &tmp
+	case FlipType_BIG:
+		var modulus big.Int
+		modulus.SetBytes(params.Big())
+		res.Big = prng.Big(&modulus)
+	case FlipType_SHUFFLE:
+		res.Shuffle = prng.Permutation(int(params.Shuffle()))
+	default:
+		return fmt.Errorf("unknown flip type: %s", t)
 	}
 	return nil
 

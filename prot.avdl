@@ -36,24 +36,16 @@ protocol flip {
   }
 
   enum FlipType {
-    INTS_1,
-    SHUFFLE_2
-  }
-
-  enum IntType {
-    FIXED_1,
-    BIG_2,
-    BOOL_3
-  }
-
-  variant FlipParametersInt switch (IntType t) {
-    case BIG: bytes;
-    case FIXED: long;
-    case BOOL: void;
+    BOOL_1,
+    INT_2,
+    BIG_3,
+    SHUFFLE_4
   }
 
   variant FlipParameters switch (FlipType t) {
-    case INTS: array<FlipParametersInt>;
+    case BOOL: void;
+    case INT: long;
+    case BIG: bytes;
     case SHUFFLE: long;
   }
 
