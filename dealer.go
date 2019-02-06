@@ -91,10 +91,11 @@ type Game struct {
 }
 
 type GamePlayerState struct {
-	ud         UserDevice
-	commitment Commitment
-	included   bool
-	secret     *Secret
+	ud             UserDevice
+	commitment     Commitment
+	commitmentTime time.Time
+	included       bool
+	secret         *Secret
 }
 
 func (g *Game) GameMetadata() GameMetadata {
@@ -256,8 +257,9 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			return DuplicateRegistrationError{g.md, msg.Sender}
 		}
 		g.players[key] = &GamePlayerState{
-			ud:         msg.Sender,
-			commitment: msg.Msg.Body.Commitment(),
+			ud:             msg.Sender,
+			commitment:     msg.Msg.Body.Commitment(),
+			commitmentTime: g.dh.Clock().Now(),
 		}
 
 	case MessageType_COMMITMENT_COMPLETE:
@@ -343,10 +345,10 @@ func (d *Dealer) computeClockSkew(ctx context.Context, md GameMetadata, leaderTi
 	localSkew := localTime.Sub(serverTime)
 
 	if absDuration(localSkew) > MaxClockSkew {
-		return time.Duration(0), time.Duration(0), BadLocalClockError{G: md}
+		return time.Duration(0), BadLocalClockError{G: md}
 	}
 	if absDuration(leaderSkew) > MaxClockSkew {
-		return time.Duration(0), time.Duration(0), BadLeaderClockError{G: md}
+		return time.Duration(0), BadLeaderClockError{G: md}
 	}
 	totalSkew := localTime.Sub(leaderTime)
 
