@@ -3,7 +3,6 @@ package flip
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	clockwork "github.com/keybase/clockwork"
 	"github.com/stretchr/testify/require"
@@ -61,18 +60,10 @@ func newTestUser() testUser {
 	}
 }
 
-func newGameMessageWrappedEncoded(t *testing.T, md GameMetadata, sender UserDevice, b GameMessageBody) GameMessageWrappedEncoded {
-	v1 := GameMessageV1{
-		Md:   md,
-		Body: b,
-	}
-	msg := NewGameMessageWithV1(v1)
-	raw, err := msgpackEncode(msg)
+func newGameMessageEncoded(t *testing.T, md GameMetadata, b GameMessageBody) GameMessageEncoded {
+	ret, err := b.Encode(md)
 	require.NoError(t, err)
-	return GameMessageWrappedEncoded{
-		Sender: sender,
-		Body:   GameMessageEncoded(base64.StdEncoding.EncodeToString(raw)),
-	}
+	return ret
 }
 
 func TestCoinflipHappyPath3(t *testing.T)  { happyFollower(t, 3) }
@@ -158,21 +149,20 @@ func (b *testBundle) commitPhase(ctx context.Context, t *testing.T) {
 		commitment, err := p.secret.computeCommitment(cp)
 		require.NoError(t, err)
 		body := NewGameMessageBodyWithCommitment(commitment)
-		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), p.ud, body)
+		b.dealer.InjectChatMessage(ctx, p.ud, newGameMessageEncoded(t, b.md(), body))
 	}
 }
 
 func (b *testBundle) startPhase(ctx context.Context, t *testing.T) {
 	body := NewGameMessageBodyWithStart(b.start)
-	gmwe := newGameMessageWrappedEncoded(t, b.md(), b.leader.ud, body)
-	b.dealer.MessageCh() <- gmwe
+	b.dealer.InjectChatMessage(ctx, b.leader.ud, newGameMessageEncoded(t, b.md(), body))
 }
 
 func (b *testBundle) completeCommit(ctx context.Context, t *testing.T) {
-	b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), b.leader.ud,
+	b.dealer.InjectChatMessage(ctx, b.leader.ud, newGameMessageEncoded(t, b.md(),
 		NewGameMessageBodyWithCommitmentComplete(CommitmentComplete{
 			Players: b.userDevices(),
-		}))
+		})))
 	update := <-b.dealer.UpdateCh()
 	require.NotNil(t, update.CC)
 	require.Equal(t, b.userDevices(), update.CC.Players)
@@ -181,7 +171,7 @@ func (b *testBundle) completeCommit(ctx context.Context, t *testing.T) {
 func (b *testBundle) revealPhase(ctx context.Context, t *testing.T) {
 	for _, p := range b.players {
 		body := NewGameMessageBodyWithReveal(p.secret)
-		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), p.ud, body)
+		b.dealer.InjectChatMessage(ctx, p.ud, newGameMessageEncoded(t, b.md(), body))
 	}
 	update := <-b.dealer.UpdateCh()
 	require.NotNil(t, update.Result)
@@ -216,7 +206,7 @@ func TestDroppedReveal(t *testing.T) {
 
 	for _, p := range b.players[0 : len(b.players)-1] {
 		body := NewGameMessageBodyWithReveal(p.secret)
-		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md(), p.ud, body)
+		b.dealer.InjectChatMessage(ctx, p.ud, newGameMessageEncoded(t, b.md(), body))
 	}
 	b.dh.clock.Advance(time.Duration(13) * time.Second)
 	update := <-b.dealer.UpdateCh()

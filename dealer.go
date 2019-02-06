@@ -45,7 +45,7 @@ type Dealer struct {
 	sync.Mutex
 	dh            DealersHelper
 	games         map[GameKey](chan<- *GameMessageWrapped)
-	chatInputCh   chan GameMessageWrappedEncoded
+	chatInputCh   chan *GameMessageWrapped
 	gameOutputCh  chan GameStateUpdateMessage
 	previousGames map[GameIDKey]bool
 }
@@ -512,12 +512,8 @@ func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped)
 	return nil
 }
 
-func (d *Dealer) handleMessage(c context.Context, emsg GameMessageWrappedEncoded) error {
-	msg, err := emsg.Decode()
-	if err != nil {
-		return err
-	}
-	fmt.Printf("msg %+v\n", msg)
+func (d *Dealer) handleMessage(c context.Context, msg *GameMessageWrapped) error {
+	fmt.Printf("msg %+v\n", *msg)
 	t, err := msg.Msg.Body.T()
 	if err != nil {
 		return err
@@ -535,7 +531,7 @@ func NewDealer(dh DealersHelper) *Dealer {
 	return &Dealer{
 		dh:           dh,
 		games:        make(map[GameKey](chan<- *GameMessageWrapped)),
-		chatInputCh:  make(chan GameMessageWrappedEncoded),
+		chatInputCh:  make(chan *GameMessageWrapped),
 		gameOutputCh: make(chan GameStateUpdateMessage, 5),
 	}
 }
@@ -544,13 +540,13 @@ func (d *Dealer) UpdateCh() <-chan GameStateUpdateMessage {
 	return d.gameOutputCh
 }
 
-func (d *Dealer) MessageCh() chan<- GameMessageWrappedEncoded {
+func (d *Dealer) MessageCh() chan<- *GameMessageWrapped {
 	return d.chatInputCh
 }
 
 func (d *Dealer) Run(ctx context.Context) error {
 	for {
-		var msg GameMessageWrappedEncoded
+		var msg *GameMessageWrapped
 		var ok bool
 		select {
 		case <-ctx.Done():
@@ -579,4 +575,17 @@ func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (re
 		GameID:    GenerateGameID(),
 	}
 	return ret, nil
+}
+
+func (d *Dealer) InjectChatMessage(ctx context.Context, sender UserDevice, body GameMessageEncoded) error {
+	gmwe := GameMessageWrappedEncoded{
+		Sender: sender,
+		Body:   body,
+	}
+	msg, err := gmwe.Decode()
+	if err != nil {
+		return err
+	}
+	d.chatInputCh <- msg
+	return nil
 }
