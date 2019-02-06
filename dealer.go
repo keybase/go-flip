@@ -78,17 +78,16 @@ type Result struct {
 }
 
 type Game struct {
-	md              GameMetadata
-	leaderClockSkew time.Duration
-	localClockSkew  time.Duration
-	params          Start
-	key             GameKey
-	msgCh           <-chan *GameMessageWrapped
-	stage           Stage
-	dh              DealersHelper
-	players         map[UserDeviceKey]*GamePlayerState
-	gameOutputCh    chan GameStateUpdateMessage
-	nPlayers        int
+	md           GameMetadata
+	clockSkew    time.Duration
+	params       Start
+	key          GameKey
+	msgCh        <-chan *GameMessageWrapped
+	stage        Stage
+	dh           DealersHelper
+	players      map[UserDeviceKey]*GamePlayerState
+	gameOutputCh chan GameStateUpdateMessage
+	nPlayers     int
 }
 
 type GamePlayerState struct {
@@ -336,7 +335,7 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
-func (d *Dealer) computeClockSkew(ctx context.Context, md GameMetadata, leaderTime time.Time) (local time.Duration, remote time.Duration, err error) {
+func (d *Dealer) computeClockSkew(ctx context.Context, md GameMetadata, leaderTime time.Time) (skew time.Duration, err error) {
 	serverTime, err := d.dh.ServerTime(ctx)
 	localTime := d.dh.Clock().Now()
 
@@ -349,8 +348,9 @@ func (d *Dealer) computeClockSkew(ctx context.Context, md GameMetadata, leaderTi
 	if absDuration(leaderSkew) > MaxClockSkew {
 		return time.Duration(0), time.Duration(0), BadLeaderClockError{G: md}
 	}
+	totalSkew := localTime.Sub(leaderTime)
 
-	return localSkew, leaderSkew, nil
+	return totalSkew, nil
 }
 
 func (d *Dealer) primeHistory(ctx context.Context) (err error) {
@@ -385,7 +385,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	if !msg.Sender.Eq(md.Initiator) {
 		return WrongSenderError{G: md, Expected: msg.Sender, Actual: md.Initiator}
 	}
-	lcs, rcs, err := d.computeClockSkew(ctx, md, start.StartTime.Time())
+	cs, err := d.computeClockSkew(ctx, md, start.StartTime.Time())
 	if err != nil {
 		return err
 	}
@@ -401,16 +401,15 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
-		md:              msg.GameMetadata(),
-		localClockSkew:  lcs,
-		leaderClockSkew: rcs,
-		key:             key,
-		params:          start,
-		msgCh:           msgCh,
-		stage:           Stage_ROUND1,
-		dh:              d.dh,
-		gameOutputCh:    d.gameOutputCh,
-		players:         make(map[UserDeviceKey]*GamePlayerState),
+		md:           msg.GameMetadata(),
+		clockSkew:    cs,
+		key:          key,
+		params:       start,
+		msgCh:        msgCh,
+		stage:        Stage_ROUND1,
+		dh:           d.dh,
+		gameOutputCh: d.gameOutputCh,
+		players:      make(map[UserDeviceKey]*GamePlayerState),
 	}
 	d.games[key] = msgCh
 	d.previousGames[md.GameID.ToKey()] = true
