@@ -74,22 +74,35 @@ func newGameMessageWrappedEncoded(t *testing.T, md GameMetadata, sender UserDevi
 	}
 }
 
-func TestCoinflipHappyPath3(t *testing.T) {
-	tester(t, 3, true)
+func TestCoinflipHappyPath3(t *testing.T)  { happyTester(t, 3) }
+func TestCoinflipHappyPath10(t *testing.T) { happyTester(t, 10) }
+
+type testBundle struct {
+	dh        *testDealersHelper
+	dealer    *Dealer
+	gameID    GameID
+	channelID ChannelID
+	md        GameMetadata
+	leader    testUser
+	players   []testUser
+	start     Start
 }
 
-func TestCoinflipHappyPath10(t *testing.T) {
-	tester(t, 10, true)
+func (b testBundle) userDevices() []UserDevice {
+	var ret []UserDevice
+	for _, p := range b.players {
+		ret = append(ret, p.ud)
+	}
+	return ret
 }
 
-func tester(t *testing.T, nUsers int, happy bool) {
+func (b *testBundle) run(ctx context.Context) {
+	go b.dealer.Run(ctx)
+}
 
+func setupTestBundle(ctx context.Context, t *testing.T, nUsers int) *testBundle {
 	dh := newTestDealersHelper()
 	dealer := NewDealer(dh)
-	ctx := context.Background()
-	go func() {
-		dealer.Run(ctx)
-	}()
 
 	leader := newTestUser()
 	params := NewFlipParametersWithBool()
@@ -104,48 +117,78 @@ func tester(t *testing.T, nUsers int, happy bool) {
 	gameID := GenerateGameID()
 	channelID := ChannelID(randBytes(6))
 	md := GameMetadata{GameID: gameID, ChannelID: channelID, Initiator: leader.ud}
-	body := NewGameMessageBodyWithStart(start)
-	gmwe := newGameMessageWrappedEncoded(t, md, leader.ud, body)
 
 	players := []testUser{leader}
-	uds := []UserDevice{leader.ud}
 	for i := 0; i < nUsers; i++ {
 		tu := newTestUser()
 		players = append(players, tu)
-		uds = append(uds, tu.ud)
 	}
+	return &testBundle{
+		dh:        dh,
+		dealer:    dealer,
+		gameID:    gameID,
+		channelID: channelID,
+		md:        md,
+		leader:    leader,
+		players:   players,
+		start:     start,
+	}
+}
 
-	dealer.MessageCh() <- gmwe
+func (b *testBundle) commitPhase(ctx context.Context, t *testing.T) {
 	cp := CommitmentPayload{
 		V: Version_V1,
-		U: leader.ud.U,
-		D: leader.ud.D,
-		C: channelID,
-		G: gameID,
-		S: start.StartTime,
+		U: b.leader.ud.U,
+		D: b.leader.ud.D,
+		C: b.channelID,
+		G: b.gameID,
+		S: b.start.StartTime,
 	}
-	for _, p := range players {
+	for _, p := range b.players {
 		commitment, err := p.secret.computeCommitment(cp)
 		require.NoError(t, err)
 		body := NewGameMessageBodyWithCommitment(commitment)
-		dealer.MessageCh() <- newGameMessageWrappedEncoded(t, md, p.ud, body)
+		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, p.ud, body)
 	}
-	dealer.MessageCh() <- newGameMessageWrappedEncoded(t, md, leader.ud,
+}
+
+func (b *testBundle) startPhase(ctx context.Context, t *testing.T) {
+	body := NewGameMessageBodyWithStart(b.start)
+	gmwe := newGameMessageWrappedEncoded(t, b.md, b.leader.ud, body)
+	b.dealer.MessageCh() <- gmwe
+}
+
+func (b *testBundle) completeCommit(ctx context.Context, t *testing.T) {
+	b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, b.leader.ud,
 		NewGameMessageBodyWithCommitmentComplete(CommitmentComplete{
-			Players: uds,
+			Players: b.userDevices(),
 		}))
-	update := <-dealer.UpdateCh()
+	update := <-b.dealer.UpdateCh()
 	require.NotNil(t, update.CC)
-	require.Equal(t, uds, update.CC.Players)
+	require.Equal(t, b.userDevices(), update.CC.Players)
+}
 
-	for _, p := range players {
+func (b *testBundle) revealPhase(ctx context.Context, t *testing.T) {
+	for _, p := range b.players {
 		body := NewGameMessageBodyWithReveal(p.secret)
-		dealer.MessageCh() <- newGameMessageWrappedEncoded(t, md, p.ud, body)
+		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, p.ud, body)
 	}
-
-	update = <-dealer.UpdateCh()
+	update := <-b.dealer.UpdateCh()
 	require.NotNil(t, update.Result)
 	require.NotNil(t, update.Result.Bool)
+}
 
-	dealer.Stop()
+func (b *testBundle) stop() {
+	b.dealer.Stop()
+}
+
+func happyTester(t *testing.T, nUsers int) {
+	ctx := context.Background()
+	b := setupTestBundle(ctx, t, nUsers)
+	b.run(ctx)
+	b.startPhase(ctx, t)
+	b.commitPhase(ctx, t)
+	b.completeCommit(ctx, t)
+	b.revealPhase(ctx, t)
+	b.stop()
 }
