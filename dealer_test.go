@@ -192,3 +192,21 @@ func happyTester(t *testing.T, nUsers int) {
 	b.revealPhase(ctx, t)
 	b.stop()
 }
+
+func TestDroppedReveal(t *testing.T) {
+	ctx := context.Background()
+	b := setupTestBundle(ctx, t, 3)
+	b.run(ctx)
+	b.startPhase(ctx, t)
+	b.commitPhase(ctx, t)
+	b.completeCommit(ctx, t)
+
+	for _, p := range b.players[0 : len(b.players)-1] {
+		body := NewGameMessageBodyWithReveal(p.secret)
+		b.dealer.MessageCh() <- newGameMessageWrappedEncoded(t, b.md, p.ud, body)
+	}
+	b.dh.clock.Advance(time.Duration(13) * time.Second)
+	update := <-b.dealer.UpdateCh()
+	fmt.Printf("%+v\n", update)
+	b.stop()
+}

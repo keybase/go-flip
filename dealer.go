@@ -310,11 +310,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			}
 		}
 
-		g.stage = Stage_ROUND2
-		g.gameOutputCh <- GameStateUpdateMessage{
-			Metatdata: g.GameMetadata(),
-			CC:        &cc,
-		}
+		g.commitRound2(&cc)
 
 	case MessageType_REVEAL:
 		if g.stage != Stage_ROUND2 {
@@ -345,17 +341,47 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 	return nil
 }
 
+func (g *Game) commitRound2(cc *CommitmentComplete) {
+	g.stage = Stage_ROUND2
+	g.gameOutputCh <- GameStateUpdateMessage{
+		Metatdata: g.GameMetadata(),
+		CC:        cc,
+	}
+}
+
+func (g *Game) completeCommitments(ctx context.Context) error {
+	var cc CommitmentComplete
+	for _, p := range g.players {
+		if p.secret == nil {
+			continue
+		}
+		cc.Players = append(cc.Players, p.ud)
+		p.included = true
+		g.nPlayers++
+	}
+	g.commitRound2(&cc)
+	return nil
+}
+
+func (g *Game) handleTimerEvent(ctx context.Context) error {
+	if g.isLeader && g.stage == Stage_ROUND1 {
+		return g.completeCommitments(ctx)
+	}
+	return TimeoutError{G: g.md, Stage: g.stage}
+}
+
 func (g *Game) run(ctx context.Context) error {
 	for {
 		timer := g.getNextTimer()
+		var err error
 		select {
 		case <-timer:
-			return TimeoutError{G: g.md, Stage: g.stage}
+			err = g.handleTimerEvent(ctx)
 		case msg := <-g.msgCh:
-			err := g.handleMessage(ctx, msg)
-			if err != nil {
-				return err
-			}
+			err = g.handleMessage(ctx, msg)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	return nil
