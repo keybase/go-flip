@@ -223,8 +223,8 @@ func testLeader(t *testing.T, nFollowers int) {
 }
 
 type testController struct {
-	dropReveal1 func(t *testing.T, b *testBundle, c *testBundle)
-	dropReveal2 func(t *testing.T, b *testBundle, c *testBundle)
+	reveal1 func(t *testing.T, b *testBundle, c *testBundle)
+	reveal2 func(t *testing.T, b *testBundle, c *testBundle)
 }
 
 func testLeaderFollowerPair(t *testing.T, testController testController) {
@@ -322,16 +322,16 @@ func testLeaderFollowerPair(t *testing.T, testController testController) {
 	verifyMyReveal(b)
 	verifyMyReveal(c)
 
-	if testController.dropReveal1 != nil {
-		testController.dropReveal1(t, b, c)
+	if testController.reveal1 != nil {
+		testController.reveal1(t, b, c)
 		return
 	}
 
 	err = c.dealer.InjectIncomingChat(ctx, rB.Sender, rB.Body)
 	require.NoError(t, err)
 
-	if testController.dropReveal2 != nil {
-		testController.dropReveal2(t, b, c)
+	if testController.reveal2 != nil {
+		testController.reveal2(t, b, c)
 		return
 	}
 
@@ -349,4 +349,13 @@ func testLeaderFollowerPair(t *testing.T, testController testController) {
 
 func TestLeaderFollowerPair(t *testing.T) {
 	testLeaderFollowerPair(t, testController{})
+}
+
+func TestFollowerDropReveal(t *testing.T) {
+	reveal2 := func(t *testing.T, b *testBundle, c *testBundle) {
+		b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
+		msg := <-b.dealer.UpdateCh()
+		fmt.Printf("output message: %+v\n", msg)
+	}
+	testLeaderFollowerPair(t, testController{reveal2: reveal2})
 }

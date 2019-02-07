@@ -182,3 +182,17 @@ type GameReplayError struct {
 func (g GameReplayError) Error() string {
 	return fmt.Sprintf("GameID was replayed: %s", g.G)
 }
+
+func (e ExportedError) Error() string {
+	t, _ := e.T()
+	return fmt.Sprintf("Exported Error: %s", t)
+}
+
+type AbsenteesError struct {
+	Ours    []UserDevice
+	Leaders []UserDevice
+}
+
+func (l AbsenteesError) Error() string {
+	return fmt.Sprintf("Flip failed! Some users didn't reveal in time (%+v) (%+v)", l.Ours, l.Leaders)
+}

@@ -278,6 +278,8 @@ const (
 	MessageType_COMMITMENT          MessageType = 2
 	MessageType_COMMITMENT_COMPLETE MessageType = 3
 	MessageType_REVEAL              MessageType = 4
+	MessageType_ERROR               MessageType = 5
+	MessageType_END                 MessageType = 6
 )
 
 func (o MessageType) DeepCopy() MessageType { return o }
@@ -287,6 +289,8 @@ var MessageTypeMap = map[string]MessageType{
 	"COMMITMENT":          2,
 	"COMMITMENT_COMPLETE": 3,
 	"REVEAL":              4,
+	"ERROR":               5,
+	"END":                 6,
 }
 
 var MessageTypeRevMap = map[MessageType]string{
@@ -294,6 +298,8 @@ var MessageTypeRevMap = map[MessageType]string{
 	2: "COMMITMENT",
 	3: "COMMITMENT_COMPLETE",
 	4: "REVEAL",
+	5: "ERROR",
+	6: "END",
 }
 
 func (e MessageType) String() string {
@@ -306,20 +312,23 @@ func (e MessageType) String() string {
 type Stage int
 
 const (
-	Stage_ROUND1 Stage = 1
-	Stage_ROUND2 Stage = 2
+	Stage_ROUND1        Stage = 1
+	Stage_ROUND2        Stage = 2
+	Stage_ROUND_CLEANUP Stage = 3
 )
 
 func (o Stage) DeepCopy() Stage { return o }
 
 var StageMap = map[string]Stage{
-	"ROUND1": 1,
-	"ROUND2": 2,
+	"ROUND1":        1,
+	"ROUND2":        2,
+	"ROUND_CLEANUP": 3,
 }
 
 var StageRevMap = map[Stage]string{
 	1: "ROUND1",
 	2: "ROUND2",
+	3: "ROUND_CLEANUP",
 }
 
 func (e Stage) String() string {
@@ -345,12 +354,98 @@ func (o Commitment) DeepCopy() Commitment {
 	return ret
 }
 
+type ErrorType int
+
+const (
+	ErrorType_ABSENTEES ErrorType = 1
+)
+
+func (o ErrorType) DeepCopy() ErrorType { return o }
+
+var ErrorTypeMap = map[string]ErrorType{
+	"ABSENTEES": 1,
+}
+
+var ErrorTypeRevMap = map[ErrorType]string{
+	1: "ABSENTEES",
+}
+
+func (e ErrorType) String() string {
+	if v, ok := ErrorTypeRevMap[e]; ok {
+		return v
+	}
+	return ""
+}
+
+type ExportedError struct {
+	T__         ErrorType     `codec:"t" json:"t"`
+	Absentees__ *[]UserDevice `codec:"absentees,omitempty" json:"absentees,omitempty"`
+}
+
+func (o *ExportedError) T() (ret ErrorType, err error) {
+	switch o.T__ {
+	case ErrorType_ABSENTEES:
+		if o.Absentees__ == nil {
+			err = errors.New("unexpected nil value for Absentees__")
+			return ret, err
+		}
+	}
+	return o.T__, nil
+}
+
+func (o ExportedError) Absentees() (res []UserDevice) {
+	if o.T__ != ErrorType_ABSENTEES {
+		panic("wrong case accessed")
+	}
+	if o.Absentees__ == nil {
+		return
+	}
+	return *o.Absentees__
+}
+
+func NewExportedErrorWithAbsentees(v []UserDevice) ExportedError {
+	return ExportedError{
+		T__:         ErrorType_ABSENTEES,
+		Absentees__: &v,
+	}
+}
+
+func NewExportedErrorDefault(t ErrorType) ExportedError {
+	return ExportedError{
+		T__: t,
+	}
+}
+
+func (o ExportedError) DeepCopy() ExportedError {
+	return ExportedError{
+		T__: o.T__.DeepCopy(),
+		Absentees__: (func(x *[]UserDevice) *[]UserDevice {
+			if x == nil {
+				return nil
+			}
+			tmp := (func(x []UserDevice) []UserDevice {
+				if x == nil {
+					return nil
+				}
+				ret := make([]UserDevice, len(x))
+				for i, v := range x {
+					vCopy := v.DeepCopy()
+					ret[i] = vCopy
+				}
+				return ret
+			})((*x))
+			return &tmp
+		})(o.Absentees__),
+	}
+}
+
 type GameMessageBody struct {
 	T__                  MessageType         `codec:"t" json:"t"`
 	Start__              *Start              `codec:"start,omitempty" json:"start,omitempty"`
 	Commitment__         *Commitment         `codec:"commitment,omitempty" json:"commitment,omitempty"`
 	CommitmentComplete__ *CommitmentComplete `codec:"commitmentComplete,omitempty" json:"commitmentComplete,omitempty"`
 	Reveal__             *Secret             `codec:"reveal,omitempty" json:"reveal,omitempty"`
+	Error__              *ExportedError      `codec:"error,omitempty" json:"error,omitempty"`
 }
 
 func (o *GameMessageBody) T() (ret MessageType, err error) {
@@ -373,6 +468,11 @@ func (o *GameMessageBody) T() (ret MessageType, err error) {
 	case MessageType_REVEAL:
 		if o.Reveal__ == nil {
 			err = errors.New("unexpected nil value for Reveal__")
+			return ret, err
+		}
+	case MessageType_ERROR:
+		if o.Error__ == nil {
+			err = errors.New("unexpected nil value for Error__")
 			return ret, err
 		}
 	}
@@ -419,6 +519,16 @@ func (o GameMessageBody) Reveal() (res Secret) {
 	return *o.Reveal__
 }
 
+func (o GameMessageBody) Error() (res ExportedError) {
+	if o.T__ != MessageType_ERROR {
+		panic("wrong case accessed")
+	}
+	if o.Error__ == nil {
+		return
+	}
+	return *o.Error__
+}
+
 func NewGameMessageBodyWithStart(v Start) GameMessageBody {
 	return GameMessageBody{
 		T__:     MessageType_START,
@@ -444,6 +554,19 @@ func NewGameMessageBodyWithReveal(v Secret) GameMessageBody {
 	return GameMessageBody{
 		T__:      MessageType_REVEAL,
 		Reveal__: &v,
+	}
+}
+
+func NewGameMessageBodyWithError(v ExportedError) GameMessageBody {
+	return GameMessageBody{
+		T__:     MessageType_ERROR,
+		Error__: &v,
+	}
+}
+
+func NewGameMessageBodyWithEnd() GameMessageBody {
+	return GameMessageBody{
+		T__: MessageType_END,
 	}
 }
 
@@ -478,6 +601,13 @@ func (o GameMessageBody) DeepCopy() GameMessageBody {
 			tmp := (*x).DeepCopy()
 			return &tmp
 		})(o.Reveal__),
+		Error__: (func(x *ExportedError) *ExportedError {
+			if x == nil {
+				return nil
+			}
+			tmp := (*x).DeepCopy()
+			return &tmp
+		})(o.Error__),
 	}
 }
 

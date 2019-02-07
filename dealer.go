@@ -59,6 +59,11 @@ func (g GameMessageWrapped) GameMetadata() GameMetadata {
 	return g.Msg.Md
 }
 
+func (m GameMessageWrapped) isForwardable() bool {
+	t, _ := m.Msg.Body.T()
+	return t != MessageType_END
+}
+
 func (g GameMetadata) ToKey() GameKey {
 	return GameKey(strings.Join([]string{g.Initiator.U.String(), g.Initiator.D.String(), g.ChannelID.String(), g.GameID.String()}, ","))
 }
@@ -212,6 +217,8 @@ func (g *Game) nextDeadline() time.Time {
 		return g.CommitmentEndTime()
 	case Stage_ROUND2:
 		return g.RevealEndTime()
+	case Stage_ROUND_CLEANUP:
+		return g.start.Add(time.Hour * time.Duration(1000))
 	default:
 		return time.Time{}
 	}
@@ -255,7 +262,9 @@ func (g *Game) finishGame(ctx context.Context) error {
 		xor.XOR(*ps.secret)
 	}
 	prng := NewPRNG(xor)
-	return g.doFlip(ctx, prng)
+	err := g.doFlip(ctx, prng)
+	g.sendOutgoingChat(ctx, NewGameMessageBodyWithEnd())
+	return err
 }
 
 func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
@@ -287,7 +296,6 @@ func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
 		Result:   &res,
 	}
 	return nil
-
 }
 
 func (g *Game) playerCommitedInTime(ps *GamePlayerState, now time.Time) bool {
@@ -307,6 +315,9 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 
 	case MessageType_START:
 		return badStage()
+
+	case MessageType_END:
+		return io.EOF
 
 	case MessageType_COMMITMENT:
 		if g.stage != Stage_ROUND1 {
@@ -389,6 +400,23 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			return g.finishGame(ctx)
 		}
 
+	case MessageType_ERROR:
+		ee := msg.Msg.Body.Error()
+		t, err := ee.T()
+		if err != nil {
+			return err
+		}
+		switch t {
+		case ErrorType_ABSENTEES:
+			g.gameOutputCh <- GameStateUpdateMessage{
+				Metadata: g.GameMetadata(),
+				Err: AbsenteesError{
+					Ours:    g.absentees(),
+					Leaders: ee.Absentees(),
+				},
+			}
+		}
+
 	default:
 		return fmt.Errorf("bad message type: %d", t)
 	}
@@ -407,6 +435,24 @@ func (g *Game) completeCommitments(ctx context.Context) error {
 	return nil
 }
 
+func (g *Game) absentees() []UserDevice {
+	var bad []UserDevice
+	for _, p := range g.players {
+		if p.included && p.secret == nil {
+			bad = append(bad, p.ud)
+		}
+	}
+	return bad
+}
+
+func (g *Game) leadflipFailed(ctx context.Context) error {
+	g.stageForTimeout = Stage_ROUND_CLEANUP
+	err := NewExportedErrorWithAbsentees(g.absentees())
+	body := NewGameMessageBodyWithError(err)
+	g.sendOutgoingChat(ctx, body)
+	return nil
+}
+
 func (g *Game) sendOutgoingChat(ctx context.Context, body GameMessageBody) {
 	// Call back into the dealer, to reroute a message back into our
 	// game, but do so in a Go routine so we don't deadlock. There could be
@@ -416,8 +462,13 @@ func (g *Game) sendOutgoingChat(ctx context.Context, body GameMessageBody) {
 }
 
 func (g *Game) handleTimerEvent(ctx context.Context) error {
-	if g.isLeader && g.stageForTimeout == Stage_ROUND1 {
-		return g.completeCommitments(ctx)
+	if g.isLeader {
+		switch g.stageForTimeout {
+		case Stage_ROUND1:
+			return g.completeCommitments(ctx)
+		case Stage_ROUND2:
+			return g.leadflipFailed(ctx)
+		}
 	}
 	return TimeoutError{G: g.md, Stage: g.stageForTimeout}
 }
@@ -431,6 +482,9 @@ func (g *Game) run(ctx context.Context) error {
 			err = g.handleTimerEvent(ctx)
 		case msg := <-g.msgCh:
 			err = g.handleMessage(ctx, msg)
+		}
+		if err == io.EOF {
+			return nil
 		}
 		if err != nil {
 			return err
@@ -582,8 +636,7 @@ func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) err
 	if err != nil {
 		return err
 	}
-
-	if !msg.Forward {
+	if !msg.Forward && msg.isForwardable() {
 		return nil
 	}
 	// Encode and send the message through the external server-routed chat channel
@@ -594,6 +647,9 @@ func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) err
 	err = d.dh.SendChat(ctx, msg.Msg.Md.ChannelID, emsg)
 	if err != nil {
 		return err
+	}
+	if t == MessageType_ERROR {
+		return msg.Msg.Body.Error()
 	}
 	return nil
 }
@@ -610,10 +666,6 @@ func NewDealer(dh DealersHelper) *Dealer {
 
 func (d *Dealer) UpdateCh() <-chan GameStateUpdateMessage {
 	return d.gameOutputCh
-}
-
-func (d *Dealer) MessageCh() chan<- *GameMessageWrapped {
-	return d.chatInputCh
 }
 
 func (d *Dealer) Run(ctx context.Context) error {
@@ -724,6 +776,7 @@ func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *Play
 }
 
 func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, body GameMessageEncoded) error {
+	// TODO: also include channel with the injection?
 	gmwe := GameMessageWrappedEncoded{
 		Sender: sender,
 		Body:   body,
@@ -731,6 +784,10 @@ func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, body
 	msg, err := gmwe.Decode()
 	if err != nil {
 		return err
+	}
+	if !msg.isForwardable() {
+		// TODO: right error type
+		return fmt.Errorf("cannot inject an unforwardable message")
 	}
 	d.chatInputCh <- msg
 	return nil
