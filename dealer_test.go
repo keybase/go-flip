@@ -184,6 +184,15 @@ func TestLeader10Followers(t *testing.T) {
 	testLeader(t, 10)
 }
 
+func TestLeader100Followers(t *testing.T) {
+	testLeader(t, 100)
+}
+
+func TestLeader1000Followers(t *testing.T) {
+	testLeader(t, 1000)
+}
+
+
 func testLeader(t *testing.T, nFollowers int) {
 	ctx := context.Background()
 	b := setupTestBundle(ctx, t)
