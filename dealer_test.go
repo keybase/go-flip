@@ -222,7 +222,7 @@ func testLeader(t *testing.T, nFollowers int) {
 	require.NotNil(t, msg.Result.Bool)
 }
 
-func TestFollower(t *testing.T) {
+func TestLeaderFollowerPair(t *testing.T) {
 	ctx := context.Background()
 
 	// The leader's state machine
@@ -241,13 +241,16 @@ func TestFollower(t *testing.T) {
 	c.run(ctx)
 	defer c.stop()
 
-	verifyCommitment := func(who *testBundle) {
-		msg := <-b.dealer.UpdateCh()
+	verifyMyCommitment := func(who *testBundle) {
+		msg := <-who.dealer.UpdateCh()
 		require.NotNil(t, msg.Commitment)
 		require.Equal(t, *msg.Commitment, who.dh.Me())
-		msg = <-c.dealer.UpdateCh()
+	}
+
+	verifyTheirCommitment := func(me *testBundle, them *testBundle) {
+		msg := <-me.dealer.UpdateCh()
 		require.NotNil(t, msg.Commitment)
-		require.Equal(t, *msg.Commitment, who.dh.Me())
+		require.Equal(t, *msg.Commitment, them.dh.Me())
 	}
 
 	verifyCommitmentComplete := func() {
@@ -290,15 +293,17 @@ func TestFollower(t *testing.T) {
 	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
 	require.NoError(t, err)
 
-	chatMsg = b.assertOutgoingChatSent(t, MessageType_COMMITMENT)
-	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
-	require.NoError(t, err)
-	verifyCommitment(b)
+	cB := b.assertOutgoingChatSent(t, MessageType_COMMITMENT)
+	cC := c.assertOutgoingChatSent(t, MessageType_COMMITMENT)
+	verifyMyCommitment(b)
+	verifyMyCommitment(c)
 
-	chatMsg = c.assertOutgoingChatSent(t, MessageType_COMMITMENT)
-	err = b.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
+	err = c.dealer.InjectIncomingChat(ctx, cB.Sender, cB.Body)
 	require.NoError(t, err)
-	verifyCommitment(c)
+	err = b.dealer.InjectIncomingChat(ctx, cC.Sender, cC.Body)
+	require.NoError(t, err)
+	verifyTheirCommitment(b, c)
+	verifyTheirCommitment(c, b)
 
 	b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
 	chatMsg = b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
