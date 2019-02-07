@@ -125,6 +125,19 @@ func (b *testBundle) runFollowersCommit(ctx context.Context, t *testing.T) {
 	}
 }
 
+func (b *testBundle) runFollowersReveal(ctx context.Context, t *testing.T) {
+	for _, f := range b.followers {
+		b.sendReveal(ctx, t, f)
+	}
+}
+
+func (b *testBundle) sendReveal(ctx context.Context, t *testing.T, p *PlayerControl) {
+	msg, err := NewGameMessageBodyWithReveal(p.secret).Encode(p.md)
+	require.NoError(t, err)
+	b.dealer.InjectIncomingChat(ctx, p.me, msg)
+	b.receiveRevealFrom(t, p)
+}
+
 func (b *testBundle) sendCommitment(ctx context.Context, t *testing.T, p *PlayerControl) {
 	msg, err := NewGameMessageBodyWithCommitment(p.commitment).Encode(p.md)
 	require.NoError(t, err)
@@ -136,6 +149,12 @@ func (b *testBundle) receiveCommitmentFrom(t *testing.T, p *PlayerControl) {
 	res := <-b.dealer.UpdateCh()
 	require.NotNil(t, res.Commitment)
 	require.Equal(t, p.me, *res.Commitment)
+}
+
+func (b *testBundle) receiveRevealFrom(t *testing.T, p *PlayerControl) {
+	res := <-b.dealer.UpdateCh()
+	require.NotNil(t, res.Reveal)
+	require.Equal(t, p.me, *res.Reveal)
 }
 
 func (b *testBundle) makeFollower(t *testing.T) {
@@ -176,4 +195,6 @@ func TestLeader(t *testing.T) {
 	require.Equal(t, 5, len(msg.CommitmentComplete.Players))
 	b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
 	b.assertOutgoingChatSent(t, MessageType_REVEAL)
+	b.receiveRevealFrom(t, leader)
+	b.runFollowersReveal(ctx, t)
 }

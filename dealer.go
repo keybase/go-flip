@@ -40,6 +40,7 @@ type GameStateUpdateMessage struct {
 	// only one of the following will be non-nil
 	Err                error
 	Commitment         *UserDevice
+	Reveal             *UserDevice
 	CommitmentComplete *CommitmentComplete
 	Result             *Result
 }
@@ -378,6 +379,11 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if err != nil {
 			return err
 		}
+		g.gameOutputCh <- GameStateUpdateMessage{
+			Metadata: g.GameMetadata(),
+			Reveal:   &msg.Sender,
+		}
+
 		g.nPlayers--
 		if g.nPlayers == 0 {
 			return g.finishGame(ctx)
