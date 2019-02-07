@@ -247,6 +247,23 @@ func TestFollower(t *testing.T) {
 		require.Equal(t, *msg.Commitment, who.dh.Me())
 	}
 
+	verifyCommitmentComplete := func() {
+		msg := <-b.dealer.UpdateCh()
+		require.NotNil(t, msg.CommitmentComplete)
+		checkPlayers := func(v []UserDevice) {
+			require.Equal(t, 2, len(v))
+			find := func(p UserDevice) {
+				require.True(t, v[0].Eq(p) || v[1].Eq(p))
+			}
+			find(b.dh.Me())
+			find(c.dh.Me())
+		}
+		checkPlayers(msg.CommitmentComplete.Players)
+		msg = <-c.dealer.UpdateCh()
+		require.NotNil(t, msg.CommitmentComplete)
+		checkPlayers(msg.CommitmentComplete.Players)
+	}
+
 	chatMsg = b.assertOutgoingChatSent(t, MessageType_COMMITMENT)
 	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
 	require.NoError(t, err)
@@ -256,4 +273,11 @@ func TestFollower(t *testing.T) {
 	err = b.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
 	require.NoError(t, err)
 	verifyCommitment(c)
+
+	b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
+	chatMsg = b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
+	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
+	require.NoError(t, err)
+	verifyCommitmentComplete()
+
 }
