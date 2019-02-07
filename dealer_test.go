@@ -121,14 +121,16 @@ func (b *testBundle) makeFollowers(t *testing.T, n int) {
 	}
 }
 
-func (b *testBundle) runFollowersCommit(t *testing.T) {
+func (b *testBundle) runFollowersCommit(ctx context.Context, t *testing.T) {
 	for _, f := range b.followers {
-		b.sendCommitment(t, f)
+		b.sendCommitment(ctx, t, f)
 	}
 }
 
-func (b *testBundle) sendCommitment(t *testing.T, p *PlayerControl) {
-	p.sendCommitment()
+func (b *testBundle) sendCommitment(ctx context.Context, t *testing.T, p *PlayerControl) {
+	msg, err := NewGameMessageBodyWithCommitment(p.commitment).Encode(p.md)
+	require.NoError(t, err)
+	b.dealer.InjectIncomingChat(ctx, p.me, msg)
 	b.receiveCommitmentFrom(t, p)
 }
 
@@ -148,22 +150,31 @@ func (b *testBundle) stop() {
 	b.dealer.Stop()
 }
 
+func (b *testBundle) assertOutgoingChatSent(t *testing.T, typ MessageType) {
+	msg := <-b.dh.ch
+	v1, err := msg.Decode()
+	require.NoError(t, err)
+	imt, err := v1.Body.T()
+	require.NoError(t, err)
+	require.Equal(t, imt, typ)
+}
+
 func TestLeader(t *testing.T) {
 	ctx := context.Background()
 	b := setupTestBundle(ctx, t)
 	b.run(ctx)
 	defer b.stop()
 	leader, err := b.dealer.StartFlip(ctx, b.start, b.channelID)
-	b.leader = leader
 	require.NoError(t, err)
-	<-b.dh.ch
+	b.leader = leader
+	b.assertOutgoingChatSent(t, MessageType_START)
 	b.receiveCommitmentFrom(t, leader)
-	<-b.dh.ch
+	b.assertOutgoingChatSent(t, MessageType_COMMITMENT)
 	b.makeFollowers(t, 4)
-	b.runFollowersCommit(t)
+	b.runFollowersCommit(ctx, t)
 	b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
 	msg := <-b.dealer.UpdateCh()
 	require.NotNil(t, msg.CommitmentComplete)
 	require.Equal(t, 5, len(msg.CommitmentComplete.Players))
-	<-b.dh.ch
+	b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
 }

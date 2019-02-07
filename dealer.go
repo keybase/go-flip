@@ -112,8 +112,8 @@ func (g *Game) GameMetadata() GameMetadata {
 	return g.md
 }
 
-func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
-	raw, err := base64.StdEncoding.DecodeString(string(e.Body))
+func (e GameMessageEncoded) Decode() (*GameMessageV1, error) {
+	raw, err := base64.StdEncoding.DecodeString(string(e))
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,16 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	if v != Version_V1 {
 		return nil, BadVersionError(v)
 	}
-	ret := GameMessageWrapped{Sender: e.Sender, Msg: msg.V1()}
+	tmp := msg.V1()
+	return &tmp, nil
+}
+
+func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
+	v1, err := e.Body.Decode()
+	if err != nil {
+		return nil, err
+	}
+	ret := GameMessageWrapped{Sender: e.Sender, Msg: *v1}
 	return &ret, nil
 }
 
@@ -616,20 +625,6 @@ func (d *Dealer) newPlayerControl(me UserDevice, md GameMetadata, start Start) (
 
 func (p *PlayerControl) GameMetadata() GameMetadata {
 	return p.md
-}
-
-func (p *PlayerControl) send(body GameMessageBody) {
-	p.dealer.chatInputCh <- &GameMessageWrapped{
-		Sender: p.me,
-		Msg: GameMessageV1{
-			Md:   p.md,
-			Body: body,
-		},
-	}
-}
-
-func (p *PlayerControl) sendCommitment() {
-	p.send(NewGameMessageBodyWithCommitment(p.commitment))
 }
 
 func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc *PlayerControl, err error) {
