@@ -7,6 +7,7 @@ import (
 	"fmt"
 	clockwork "github.com/keybase/clockwork"
 	"github.com/stretchr/testify/require"
+	"math/big"
 	"testing"
 	"time"
 )
@@ -89,12 +90,10 @@ func (b *testBundle) run(ctx context.Context) {
 	go b.dealer.Run(ctx)
 }
 
-func setupTestBundle(ctx context.Context, t *testing.T) *testBundle {
+func setupTestBundleWithParams(ctx context.Context, t *testing.T, params FlipParameters) *testBundle {
 	me := newTestUser()
 	dh := newTestDealersHelper(me)
 	dealer := NewDealer(dh)
-
-	params := NewFlipParametersWithBool()
 	start := Start{
 		StartTime:            ToTime(dh.clock.Now()),
 		CommitmentWindowMsec: 5 * 1000,
@@ -111,6 +110,10 @@ func setupTestBundle(ctx context.Context, t *testing.T) *testBundle {
 		channelID: channelID,
 		start:     start,
 	}
+}
+
+func setupTestBundle(ctx context.Context, t *testing.T) *testBundle {
+	return setupTestBundleWithParams(ctx, t, NewFlipParametersWithBool())
 }
 
 func (b *testBundle) makeFollowers(t *testing.T, n int) {
@@ -223,7 +226,11 @@ func TestFollower(t *testing.T) {
 	ctx := context.Background()
 
 	// The leader's state machine
-	b := setupTestBundle(ctx, t)
+	var m big.Int
+	m.SetString("3141592653589793238462643383279502884197169399375", 10)
+	mb := m.Bytes()
+
+	b := setupTestBundleWithParams(ctx, t, NewFlipParametersWithBig(mb))
 	b.run(ctx)
 	defer b.stop()
 	_, err := b.dealer.StartFlip(ctx, b.start, b.channelID)
@@ -233,10 +240,6 @@ func TestFollower(t *testing.T) {
 	c := setupTestBundle(ctx, t)
 	c.run(ctx)
 	defer c.stop()
-
-	chatMsg := b.assertOutgoingChatSent(t, MessageType_START)
-	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
-	require.NoError(t, err)
 
 	verifyCommitment := func(who *testBundle) {
 		msg := <-b.dealer.UpdateCh()
@@ -264,6 +267,29 @@ func TestFollower(t *testing.T) {
 		checkPlayers(msg.CommitmentComplete.Players)
 	}
 
+	verifyMyReveal := func(who *testBundle) {
+		msg := <-who.dealer.UpdateCh()
+		require.NotNil(t, msg.Reveal)
+		require.Equal(t, *msg.Reveal, who.dh.Me())
+	}
+
+	verifyTheirReveal := func(me *testBundle, them *testBundle) {
+		msg := <-me.dealer.UpdateCh()
+		require.NotNil(t, msg.Reveal)
+		require.Equal(t, *msg.Reveal, them.dh.Me())
+	}
+
+	getResult := func(who *testBundle) *big.Int {
+		msg := <-who.dealer.UpdateCh()
+		require.NotNil(t, msg.Result)
+		require.NotNil(t, msg.Result.Big)
+		return msg.Result.Big
+	}
+
+	chatMsg := b.assertOutgoingChatSent(t, MessageType_START)
+	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
+	require.NoError(t, err)
+
 	chatMsg = b.assertOutgoingChatSent(t, MessageType_COMMITMENT)
 	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
 	require.NoError(t, err)
@@ -280,4 +306,22 @@ func TestFollower(t *testing.T) {
 	require.NoError(t, err)
 	verifyCommitmentComplete()
 
+	// Both B & C reveal their messages
+	rB := b.assertOutgoingChatSent(t, MessageType_REVEAL)
+	rC := c.assertOutgoingChatSent(t, MessageType_REVEAL)
+	verifyMyReveal(b)
+	verifyMyReveal(c)
+
+	err = c.dealer.InjectIncomingChat(ctx, rB.Sender, rB.Body)
+	require.NoError(t, err)
+	err = b.dealer.InjectIncomingChat(ctx, rC.Sender, rC.Body)
+	require.NoError(t, err)
+
+	verifyTheirReveal(b, c)
+	verifyTheirReveal(c, b)
+
+	resB := getResult(b)
+	resC := getResult(c)
+	fmt.Printf("RES %s\n", resB.String())
+	require.Equal(t, 0, resB.Cmp(resC))
 }
