@@ -20,8 +20,10 @@ type GameMessageWrappedEncoded struct {
 }
 
 type GameMessageWrapped struct {
-	Sender UserDevice
-	Msg    GameMessageV1
+	Sender  UserDevice
+	Msg     GameMessageV1
+	Me      *PlayerControl
+	Forward bool
 }
 
 type DealersHelper interface {
@@ -98,6 +100,7 @@ type Game struct {
 	gameOutputCh    chan GameStateUpdateMessage
 	nPlayers        int
 	dealer          *Dealer
+	me              *PlayerControl
 }
 
 type GamePlayerState struct {
@@ -354,6 +357,10 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			CommitmentComplete: &cc,
 		}
 
+		if g.me != nil {
+			g.sendOutgoingChat(ctx, NewGameMessageBodyWithReveal(g.me.secret))
+		}
+
 	case MessageType_REVEAL:
 		if g.stage != Stage_ROUND2 {
 			return badStage()
@@ -397,7 +404,7 @@ func (g *Game) completeCommitments(ctx context.Context) error {
 func (g *Game) sendOutgoingChat(ctx context.Context, body GameMessageBody) {
 	// Call back into the dealer, to reroute a message back into our
 	// game, but do so in a Go routine so we don't deadlock.
-	go g.dealer.sendOutgoingChat(ctx, g.GameMetadata(), body)
+	go g.dealer.sendOutgoingChat(ctx, g.GameMetadata(), nil, body)
 }
 
 func (g *Game) handleTimerEvent(ctx context.Context) error {
@@ -510,6 +517,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		gameOutputCh:    d.gameOutputCh,
 		players:         make(map[UserDeviceKey]*GamePlayerState),
 		dealer:          d,
+		me:              msg.Me,
 	}
 	d.games[key] = msgCh
 	d.previousGames[md.GameID.ToKey()] = true
@@ -530,17 +538,34 @@ func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped)
 	return nil
 }
 
-func (d *Dealer) handleMessage(c context.Context, msg *GameMessageWrapped) error {
-	fmt.Printf("msg %+v\n", *msg)
+func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
+	fmt.Printf("handleMessage %+v\n", *msg)
+
 	t, err := msg.Msg.Body.T()
 	if err != nil {
 		return err
 	}
 	switch t {
 	case MessageType_START:
-		return d.handleMessageStart(c, msg, msg.Msg.Body.Start())
+		err = d.handleMessageStart(ctx, msg, msg.Msg.Body.Start())
 	default:
-		return d.handleMessageOthers(c, msg)
+		err = d.handleMessageOthers(ctx, msg)
+	}
+	if err != nil {
+		return err
+	}
+
+	if !msg.Forward {
+		return nil
+	}
+	// Encode and send the message through the external server-routed chat channel
+	emsg, err := msg.Encode()
+	if err != nil {
+		return err
+	}
+	err = d.dh.SendChat(ctx, msg.Msg.Md.ChannelID, emsg)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -637,21 +662,23 @@ func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc
 	if err != nil {
 		return nil, err
 	}
-	err = d.sendOutgoingChat(ctx, md, NewGameMessageBodyWithStart(start))
+	err = d.sendOutgoingChat(ctx, md, pc, NewGameMessageBodyWithStart(start))
 	if err != nil {
 		return nil, err
 	}
-	err = d.sendOutgoingChat(ctx, md, NewGameMessageBodyWithCommitment(pc.commitment))
+	err = d.sendOutgoingChat(ctx, md, nil, NewGameMessageBodyWithCommitment(pc.commitment))
 	if err != nil {
 		return nil, err
 	}
 	return pc, nil
 }
 
-func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, body GameMessageBody) error {
+func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *PlayerControl, body GameMessageBody) error {
 
 	gmw := GameMessageWrapped{
-		Sender: d.dh.Me(),
+		Sender:  d.dh.Me(),
+		Me:      me,
+		Forward: true,
 		Msg: GameMessageV1{
 			Md:   md,
 			Body: body,
@@ -661,12 +688,7 @@ func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, body Gam
 	// Reinject the message into the state machine.
 	d.chatInputCh <- &gmw
 
-	// Encode and send the message through the external server-routed chat channel
-	emsg, err := gmw.Encode()
-	if err != nil {
-		return err
-	}
-	return d.dh.SendChat(ctx, md.ChannelID, emsg)
+	return nil
 }
 
 func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, body GameMessageEncoded) error {

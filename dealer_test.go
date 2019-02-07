@@ -21,7 +21,7 @@ func newTestDealersHelper(me UserDevice) *testDealersHelper {
 	return &testDealersHelper{
 		clock: clockwork.NewFakeClock(),
 		me:    me,
-		ch:    make(chan GameMessageEncoded),
+		ch:    make(chan GameMessageEncoded, 10),
 	}
 }
 
@@ -47,9 +47,7 @@ func (t *testDealersHelper) Me() UserDevice {
 
 func (t *testDealersHelper) SendChat(ctx context.Context, chid ChannelID, msg GameMessageEncoded) error {
 	fmt.Printf("Sending chat %s <- %s\n", hex.EncodeToString(chid), msg)
-	go func() {
-		t.ch <- msg
-	}()
+	t.ch <- msg
 	return nil
 }
 
@@ -177,4 +175,5 @@ func TestLeader(t *testing.T) {
 	require.NotNil(t, msg.CommitmentComplete)
 	require.Equal(t, 5, len(msg.CommitmentComplete.Players))
 	b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
+	b.assertOutgoingChatSent(t, MessageType_REVEAL)
 }
