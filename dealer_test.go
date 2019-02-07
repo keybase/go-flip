@@ -14,14 +14,14 @@ import (
 type testDealersHelper struct {
 	clock clockwork.FakeClock
 	me    UserDevice
-	ch    chan GameMessageEncoded
+	ch    chan GameMessageWrappedEncoded
 }
 
 func newTestDealersHelper(me UserDevice) *testDealersHelper {
 	return &testDealersHelper{
 		clock: clockwork.NewFakeClock(),
 		me:    me,
-		ch:    make(chan GameMessageEncoded, 10),
+		ch:    make(chan GameMessageWrappedEncoded, 10),
 	}
 }
 
@@ -47,7 +47,7 @@ func (t *testDealersHelper) Me() UserDevice {
 
 func (t *testDealersHelper) SendChat(ctx context.Context, chid ChannelID, msg GameMessageEncoded) error {
 	fmt.Printf("Sending chat %s <- %s\n", hex.EncodeToString(chid), msg)
-	t.ch <- msg
+	t.ch <- GameMessageWrappedEncoded{Body: msg, Sender: t.me}
 	return nil
 }
 
@@ -167,13 +167,14 @@ func (b *testBundle) stop() {
 	b.dealer.Stop()
 }
 
-func (b *testBundle) assertOutgoingChatSent(t *testing.T, typ MessageType) {
+func (b *testBundle) assertOutgoingChatSent(t *testing.T, typ MessageType) GameMessageWrappedEncoded {
 	msg := <-b.dh.ch
 	v1, err := msg.Decode()
 	require.NoError(t, err)
-	imt, err := v1.Body.T()
+	imt, err := v1.Msg.Body.T()
 	require.NoError(t, err)
 	require.Equal(t, imt, typ)
+	return msg
 }
 
 func TestLeader3Followers(t *testing.T) {
@@ -192,7 +193,6 @@ func TestLeader1000Followers(t *testing.T) {
 	testLeader(t, 1000)
 }
 
-
 func testLeader(t *testing.T, nFollowers int) {
 	ctx := context.Background()
 	b := setupTestBundle(ctx, t)
@@ -209,7 +209,7 @@ func testLeader(t *testing.T, nFollowers int) {
 	b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
 	msg := <-b.dealer.UpdateCh()
 	require.NotNil(t, msg.CommitmentComplete)
-	require.Equal(t, (nFollowers+1), len(msg.CommitmentComplete.Players))
+	require.Equal(t, (nFollowers + 1), len(msg.CommitmentComplete.Players))
 	b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
 	b.assertOutgoingChatSent(t, MessageType_REVEAL)
 	b.receiveRevealFrom(t, leader)
@@ -217,4 +217,43 @@ func testLeader(t *testing.T, nFollowers int) {
 	msg = <-b.dealer.UpdateCh()
 	require.NotNil(t, msg.Result)
 	require.NotNil(t, msg.Result.Bool)
+}
+
+func TestFollower(t *testing.T) {
+	ctx := context.Background()
+
+	// The leader's state machine
+	b := setupTestBundle(ctx, t)
+	b.run(ctx)
+	defer b.stop()
+	_, err := b.dealer.StartFlip(ctx, b.start, b.channelID)
+	require.NoError(t, err)
+
+	// The follower's state machine
+	c := setupTestBundle(ctx, t)
+	c.run(ctx)
+	defer c.stop()
+
+	chatMsg := b.assertOutgoingChatSent(t, MessageType_START)
+	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
+	require.NoError(t, err)
+
+	verifyCommitment := func(who *testBundle) {
+		msg := <-b.dealer.UpdateCh()
+		require.NotNil(t, msg.Commitment)
+		require.Equal(t, *msg.Commitment, who.dh.Me())
+		msg = <-c.dealer.UpdateCh()
+		require.NotNil(t, msg.Commitment)
+		require.Equal(t, *msg.Commitment, who.dh.Me())
+	}
+
+	chatMsg = b.assertOutgoingChatSent(t, MessageType_COMMITMENT)
+	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
+	require.NoError(t, err)
+	verifyCommitment(b)
+
+	chatMsg = c.assertOutgoingChatSent(t, MessageType_COMMITMENT)
+	err = b.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
+	require.NoError(t, err)
+	verifyCommitment(c)
 }

@@ -510,10 +510,22 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		return GameReplayError{md.GameID}
 	}
 
+	isLeader := true
+	me := msg.Me
+	// Make a new follower player controller if one didn't already exit (since we were
+	// the Leader)
+	if me == nil {
+		me, err = d.newPlayerControl(d.dh.Me(), md, start)
+		if err != nil {
+			return err
+		}
+		isLeader = false
+	}
+
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
 		md:              msg.GameMetadata(),
-		isLeader:        d.dh.Me().Eq(msg.Sender),
+		isLeader:        isLeader,
 		clockSkew:       cs,
 		start:           d.dh.Clock().Now(),
 		key:             key,
@@ -525,11 +537,19 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		gameOutputCh:    d.gameOutputCh,
 		players:         make(map[UserDeviceKey]*GamePlayerState),
 		dealer:          d,
-		me:              msg.Me,
+		me:              me,
 	}
 	d.games[key] = msgCh
 	d.previousGames[md.GameID.ToKey()] = true
+
 	go d.run(ctx, game)
+
+	// Once the game has started, we are free to send a message into the channel
+	// with our commitment. We are now in the inner loop of the Dealer, so we
+	// have to do this send in a Go-routine, so as not to deadlock the Dealer.
+	if !isLeader {
+		go d.sendCommitment(ctx, md, me)
+	}
 	return nil
 }
 
@@ -674,11 +694,15 @@ func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc
 	if err != nil {
 		return nil, err
 	}
-	err = d.sendOutgoingChat(ctx, md, nil, NewGameMessageBodyWithCommitment(pc.commitment))
+	err = d.sendCommitment(ctx, md, pc)
 	if err != nil {
 		return nil, err
 	}
 	return pc, nil
+}
+
+func (d *Dealer) sendCommitment(ctx context.Context, md GameMetadata, pc *PlayerControl) error {
+	return d.sendOutgoingChat(ctx, md, nil, NewGameMessageBodyWithCommitment(pc.commitment))
 }
 
 func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *PlayerControl, body GameMessageBody) error {
