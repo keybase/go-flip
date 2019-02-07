@@ -176,7 +176,15 @@ func (b *testBundle) assertOutgoingChatSent(t *testing.T, typ MessageType) {
 	require.Equal(t, imt, typ)
 }
 
-func TestLeader(t *testing.T) {
+func TestLeader3Followers(t *testing.T) {
+	testLeader(t, 3)
+}
+
+func TestLeader10Followers(t *testing.T) {
+	testLeader(t, 10)
+}
+
+func testLeader(t *testing.T, nFollowers int) {
 	ctx := context.Background()
 	b := setupTestBundle(ctx, t)
 	b.run(ctx)
@@ -187,12 +195,12 @@ func TestLeader(t *testing.T) {
 	b.assertOutgoingChatSent(t, MessageType_START)
 	b.receiveCommitmentFrom(t, leader)
 	b.assertOutgoingChatSent(t, MessageType_COMMITMENT)
-	b.makeFollowers(t, 4)
+	b.makeFollowers(t, nFollowers)
 	b.runFollowersCommit(ctx, t)
 	b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
 	msg := <-b.dealer.UpdateCh()
 	require.NotNil(t, msg.CommitmentComplete)
-	require.Equal(t, 5, len(msg.CommitmentComplete.Players))
+	require.Equal(t, (nFollowers+1), len(msg.CommitmentComplete.Players))
 	b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
 	b.assertOutgoingChatSent(t, MessageType_REVEAL)
 	b.receiveRevealFrom(t, leader)
