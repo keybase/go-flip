@@ -403,7 +403,9 @@ func (g *Game) completeCommitments(ctx context.Context) error {
 
 func (g *Game) sendOutgoingChat(ctx context.Context, body GameMessageBody) {
 	// Call back into the dealer, to reroute a message back into our
-	// game, but do so in a Go routine so we don't deadlock.
+	// game, but do so in a Go routine so we don't deadlock. There could be
+	// 100 incoming messages in front of us, all coming off the chat channel,
+	// so we're ok to send when we can.
 	go g.dealer.sendOutgoingChat(ctx, g.GameMetadata(), nil, body)
 }
 
