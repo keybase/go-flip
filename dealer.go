@@ -29,6 +29,7 @@ type DealersHelper interface {
 	Clock() clockwork.Clock
 	ServerTime(context.Context) (time.Time, error)
 	ReadHistory(ctx context.Context, since time.Time) ([]GameMessageWrappedEncoded, error)
+	SendChat(ctx context.Context, ch ChannelID, msg GameMessageEncoded) error
 	Me() UserDevice
 }
 
@@ -39,13 +40,13 @@ type GameStateUpdateMessage struct {
 	Commitment         *UserDevice
 	CommitmentComplete *CommitmentComplete
 	Result             *Result
-	SendChat           *GameMessageEncoded
 }
 
 type Dealer struct {
 	sync.Mutex
 	dh            DealersHelper
 	games         map[GameKey](chan<- *GameMessageWrapped)
+	shutdownCh    chan struct{}
 	chatInputCh   chan *GameMessageWrapped
 	gameOutputCh  chan GameStateUpdateMessage
 	previousGames map[GameIDKey]bool
@@ -83,18 +84,20 @@ type Result struct {
 }
 
 type Game struct {
-	md           GameMetadata
-	clockSkew    time.Duration
-	start        time.Time
-	isLeader     bool
-	params       Start
-	key          GameKey
-	msgCh        <-chan *GameMessageWrapped
-	stage        Stage
-	dh           DealersHelper
-	players      map[UserDeviceKey]*GamePlayerState
-	gameOutputCh chan GameStateUpdateMessage
-	nPlayers     int
+	md              GameMetadata
+	clockSkew       time.Duration
+	start           time.Time
+	isLeader        bool
+	params          Start
+	key             GameKey
+	msgCh           <-chan *GameMessageWrapped
+	stage           Stage
+	stageForTimeout Stage
+	dh              DealersHelper
+	players         map[UserDeviceKey]*GamePlayerState
+	gameOutputCh    chan GameStateUpdateMessage
+	nPlayers        int
+	dealer          *Dealer
 }
 
 type GamePlayerState struct {
@@ -130,9 +133,17 @@ func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
 	return &ret, nil
 }
 
-func (w GameMessageBody) Encode(md GameMetadata) (GameMessageEncoded, error) {
-	v1 := GameMessageV1{Md: md, Body: w}
-	msg := NewGameMessageWithV1(v1)
+func (w GameMessageWrapped) Encode() (GameMessageEncoded, error) {
+	return w.Msg.Encode()
+}
+
+func (b GameMessageBody) Encode(md GameMetadata) (GameMessageEncoded, error) {
+	v1 := GameMessageV1{Md: md, Body: b}
+	return v1.Encode()
+}
+
+func (v GameMessageV1) Encode() (GameMessageEncoded, error) {
+	msg := NewGameMessageWithV1(v)
 	raw, err := msgpackEncode(msg)
 	if err != nil {
 		return GameMessageEncoded(""), err
@@ -183,7 +194,7 @@ func (g *Game) RevealEndTime() time.Time {
 }
 
 func (g *Game) nextDeadline() time.Time {
-	switch g.stage {
+	switch g.stageForTimeout {
 	case Stage_ROUND1:
 		return g.CommitmentEndTime()
 	case Stage_ROUND2:
@@ -277,7 +288,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		return err
 	}
 	badStage := func() error {
-		return BadMessageForStageError{MessageType: t, Stage: g.stage}
+		return BadMessageForStageError{G: g.GameMetadata(), MessageType: t, Stage: g.stage}
 	}
 	switch t {
 
@@ -298,6 +309,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			commitmentTime: g.dh.Clock().Now(),
 		}
 		g.gameOutputCh <- GameStateUpdateMessage{
+			Metadata:   g.GameMetadata(),
 			Commitment: &msg.Sender,
 		}
 
@@ -326,8 +338,12 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 				g.dh.CLogf(ctx, "User %s wasn't included, but they should have been", ps.ud)
 			}
 		}
-
-		g.commitRound2(&cc)
+		g.stage = Stage_ROUND2
+		g.stageForTimeout = Stage_ROUND2
+		g.gameOutputCh <- GameStateUpdateMessage{
+			Metadata:           g.GameMetadata(),
+			CommitmentComplete: &cc,
+		}
 
 	case MessageType_REVEAL:
 		if g.stage != Stage_ROUND2 {
@@ -358,39 +374,28 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 	return nil
 }
 
-func (g *Game) commitRound2(cc *CommitmentComplete) {
-	g.stage = Stage_ROUND2
-	g.gameOutputCh <- GameStateUpdateMessage{
-		Metadata:           g.GameMetadata(),
-		CommitmentComplete: cc,
-	}
-}
-
 func (g *Game) completeCommitments(ctx context.Context) error {
 	var cc CommitmentComplete
 	for _, p := range g.players {
 		cc.Players = append(cc.Players, p.ud)
-		p.included = true
-		g.nPlayers++
 	}
-	msg, err := NewGameMessageBodyWithCommitmentComplete(cc).Encode(g.GameMetadata())
-	if err != nil {
-		return err
-	}
-	fmt.Printf("ok doing well here: %+v\n", *g)
-	g.gameOutputCh <- GameStateUpdateMessage{
-		Metadata: g.GameMetadata(),
-		SendChat: &msg,
-	}
-	g.commitRound2(&cc)
+	body := NewGameMessageBodyWithCommitmentComplete(cc)
+	g.stageForTimeout = Stage_ROUND2
+	g.sendOutgoingChat(ctx, body)
 	return nil
 }
 
+func (g *Game) sendOutgoingChat(ctx context.Context, body GameMessageBody) {
+	// Call back into the dealer, to reroute a message back into our
+	// game, but do so in a Go routine so we don't deadlock.
+	go g.dealer.sendOutgoingChat(ctx, g.GameMetadata(), body)
+}
+
 func (g *Game) handleTimerEvent(ctx context.Context) error {
-	if g.isLeader && g.stage == Stage_ROUND1 {
+	if g.isLeader && g.stageForTimeout == Stage_ROUND1 {
 		return g.completeCommitments(ctx)
 	}
-	return TimeoutError{G: g.md, Stage: g.stage}
+	return TimeoutError{G: g.md, Stage: g.stageForTimeout}
 }
 
 func (g *Game) run(ctx context.Context) error {
@@ -483,17 +488,19 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 
 	msgCh := make(chan *GameMessageWrapped)
 	game := &Game{
-		md:           msg.GameMetadata(),
-		isLeader:     d.dh.Me().Eq(msg.Sender),
-		clockSkew:    cs,
-		start:        d.dh.Clock().Now(),
-		key:          key,
-		params:       start,
-		msgCh:        msgCh,
-		stage:        Stage_ROUND1,
-		dh:           d.dh,
-		gameOutputCh: d.gameOutputCh,
-		players:      make(map[UserDeviceKey]*GamePlayerState),
+		md:              msg.GameMetadata(),
+		isLeader:        d.dh.Me().Eq(msg.Sender),
+		clockSkew:       cs,
+		start:           d.dh.Clock().Now(),
+		key:             key,
+		params:          start,
+		msgCh:           msgCh,
+		stage:           Stage_ROUND1,
+		stageForTimeout: Stage_ROUND1,
+		dh:              d.dh,
+		gameOutputCh:    d.gameOutputCh,
+		players:         make(map[UserDeviceKey]*GamePlayerState),
+		dealer:          d,
 	}
 	d.games[key] = msgCh
 	d.previousGames[md.GameID.ToKey()] = true
@@ -533,6 +540,7 @@ func NewDealer(dh DealersHelper) *Dealer {
 	return &Dealer{
 		dh:           dh,
 		games:        make(map[GameKey](chan<- *GameMessageWrapped)),
+		shutdownCh:   make(chan struct{}),
 		chatInputCh:  make(chan *GameMessageWrapped),
 		gameOutputCh: make(chan GameStateUpdateMessage, 500),
 	}
@@ -548,26 +556,29 @@ func (d *Dealer) MessageCh() chan<- *GameMessageWrapped {
 
 func (d *Dealer) Run(ctx context.Context) error {
 	for {
-		var msg *GameMessageWrapped
-		var ok bool
 		select {
+
 		case <-ctx.Done():
 			return ctx.Err()
-		case msg, ok = <-d.chatInputCh:
-			if !ok {
-				return io.EOF
+
+			// This channel never closes
+		case msg := <-d.chatInputCh:
+			err := d.handleMessage(ctx, msg)
+			if err != nil {
+				d.dh.CLogf(ctx, "Error reading message: %s", err.Error())
 			}
-		}
-		err := d.handleMessage(ctx, msg)
-		if err != nil {
-			d.dh.CLogf(ctx, "Error reading message: %s", err.Error())
+
+			// exit the loop if we've shutdown
+		case <-d.shutdownCh:
+			return io.EOF
+
 		}
 	}
 	return nil
 }
 
 func (d *Dealer) Stop() {
-	close(d.chatInputCh)
+	close(d.shutdownCh)
 }
 
 type PlayerControl struct {
@@ -627,25 +638,43 @@ func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc
 		ChannelID: chid,
 		GameID:    GenerateGameID(),
 	}
-	body := NewGameMessageBodyWithStart(start)
-	sendChat, err := body.Encode(md)
-	if err != nil {
-		return nil, err
-	}
-	d.gameOutputCh <- GameStateUpdateMessage{
-		Metadata: md,
-		SendChat: &sendChat,
-	}
 	pc, err = d.newPlayerControl(d.dh.Me(), md, start)
 	if err != nil {
 		return nil, err
 	}
-	pc.send(body)
-	pc.sendCommitment()
+	err = d.sendOutgoingChat(ctx, md, NewGameMessageBodyWithStart(start))
+	if err != nil {
+		return nil, err
+	}
+	err = d.sendOutgoingChat(ctx, md, NewGameMessageBodyWithCommitment(pc.commitment))
+	if err != nil {
+		return nil, err
+	}
 	return pc, nil
 }
 
-func (d *Dealer) InjectChatMessage(ctx context.Context, sender UserDevice, body GameMessageEncoded) error {
+func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, body GameMessageBody) error {
+
+	gmw := GameMessageWrapped{
+		Sender: d.dh.Me(),
+		Msg: GameMessageV1{
+			Md:   md,
+			Body: body,
+		},
+	}
+
+	// Reinject the message into the state machine.
+	d.chatInputCh <- &gmw
+
+	// Encode and send the message through the external server-routed chat channel
+	emsg, err := gmw.Encode()
+	if err != nil {
+		return err
+	}
+	return d.dh.SendChat(ctx, md.ChannelID, emsg)
+}
+
+func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, body GameMessageEncoded) error {
 	gmwe := GameMessageWrappedEncoded{
 		Sender: sender,
 		Body:   body,

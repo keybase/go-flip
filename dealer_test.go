@@ -3,6 +3,7 @@ package flip
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	clockwork "github.com/keybase/clockwork"
 	"github.com/stretchr/testify/require"
@@ -13,10 +14,15 @@ import (
 type testDealersHelper struct {
 	clock clockwork.FakeClock
 	me    UserDevice
+	ch    chan GameMessageEncoded
 }
 
 func newTestDealersHelper(me UserDevice) *testDealersHelper {
-	return &testDealersHelper{clock: clockwork.NewFakeClock(), me: me}
+	return &testDealersHelper{
+		clock: clockwork.NewFakeClock(),
+		me:    me,
+		ch:    make(chan GameMessageEncoded),
+	}
 }
 
 func (t *testDealersHelper) Clock() clockwork.Clock {
@@ -37,6 +43,14 @@ func (t *testDealersHelper) ReadHistory(ctx context.Context, since time.Time) ([
 
 func (t *testDealersHelper) Me() UserDevice {
 	return t.me
+}
+
+func (t *testDealersHelper) SendChat(ctx context.Context, chid ChannelID, msg GameMessageEncoded) error {
+	fmt.Printf("Sending chat %s <- %s\n", hex.EncodeToString(chid), msg)
+	go func() {
+		t.ch <- msg
+	}()
+	return nil
 }
 
 func randBytes(i int) []byte {
@@ -141,19 +155,15 @@ func TestLeader(t *testing.T) {
 	defer b.stop()
 	leader, err := b.dealer.StartFlip(ctx, b.start, b.channelID)
 	b.leader = leader
-	md := leader.GameMetadata()
 	require.NoError(t, err)
-	msg := <-b.dealer.UpdateCh()
-	require.NotNil(t, msg.SendChat)
-	require.Equal(t, md, msg.Metadata)
+	<-b.dh.ch
 	b.receiveCommitmentFrom(t, leader)
+	<-b.dh.ch
 	b.makeFollowers(t, 4)
 	b.runFollowersCommit(t)
 	b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
-	msg = <-b.dealer.UpdateCh()
-	require.NotNil(t, msg.SendChat)
-	require.Equal(t, md, msg.Metadata)
-	msg = <-b.dealer.UpdateCh()
+	msg := <-b.dealer.UpdateCh()
 	require.NotNil(t, msg.CommitmentComplete)
 	require.Equal(t, 5, len(msg.CommitmentComplete.Players))
+	<-b.dh.ch
 }
