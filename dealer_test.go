@@ -229,13 +229,17 @@ type testController struct {
 	b2 breakpoint
 }
 
+func pi() *big.Int {
+	var m big.Int
+	m.SetString("3141592653589793238462643383279502884197169399375", 10)
+	return &m
+}
+
 func testLeaderFollowerPair(t *testing.T, testController testController) {
 	ctx := context.Background()
 
 	// The leader's state machine
-	var m big.Int
-	m.SetString("3141592653589793238462643383279502884197169399375", 10)
-	mb := m.Bytes()
+	mb := pi().Bytes()
 
 	b := setupTestBundleWithParams(ctx, t, NewFlipParametersWithBig(mb))
 	b.run(ctx)
