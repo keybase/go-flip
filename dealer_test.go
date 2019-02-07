@@ -222,9 +222,11 @@ func testLeader(t *testing.T, nFollowers int) {
 	require.NotNil(t, msg.Result.Bool)
 }
 
+type breakpoint func(t *testing.T, b *testBundle, c *testBundle) bool
+
 type testController struct {
-	reveal1 func(t *testing.T, b *testBundle, c *testBundle)
-	reveal2 func(t *testing.T, b *testBundle, c *testBundle)
+	b1 breakpoint
+	b2 breakpoint
 }
 
 func testLeaderFollowerPair(t *testing.T, testController testController) {
@@ -310,6 +312,13 @@ func testLeaderFollowerPair(t *testing.T, testController testController) {
 	verifyTheirCommitment(b, c)
 	verifyTheirCommitment(c, b)
 
+	if testController.b1 != nil {
+		ret := testController.b1(t, b, c)
+		if !ret {
+			return
+		}
+	}
+
 	b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
 	chatMsg = b.assertOutgoingChatSent(t, MessageType_COMMITMENT_COMPLETE)
 	err = c.dealer.InjectIncomingChat(ctx, chatMsg.Sender, chatMsg.Body)
@@ -322,24 +331,21 @@ func testLeaderFollowerPair(t *testing.T, testController testController) {
 	verifyMyReveal(b)
 	verifyMyReveal(c)
 
-	if testController.reveal1 != nil {
-		testController.reveal1(t, b, c)
-		return
-	}
-
 	err = c.dealer.InjectIncomingChat(ctx, rB.Sender, rB.Body)
 	require.NoError(t, err)
-
-	if testController.reveal2 != nil {
-		testController.reveal2(t, b, c)
-		return
-	}
 
 	err = b.dealer.InjectIncomingChat(ctx, rC.Sender, rC.Body)
 	require.NoError(t, err)
 
 	verifyTheirReveal(b, c)
 	verifyTheirReveal(c, b)
+
+	if testController.b2 != nil {
+		ret := testController.b2(t, b, c)
+		if !ret {
+			return
+		}
+	}
 
 	resB := getResult(b)
 	resC := getResult(c)
@@ -349,13 +355,4 @@ func testLeaderFollowerPair(t *testing.T, testController testController) {
 
 func TestLeaderFollowerPair(t *testing.T) {
 	testLeaderFollowerPair(t, testController{})
-}
-
-func TestFollowerDropReveal(t *testing.T) {
-	reveal2 := func(t *testing.T, b *testBundle, c *testBundle) {
-		b.dh.clock.Advance(time.Duration(6001) * time.Millisecond)
-		msg := <-b.dealer.UpdateCh()
-		fmt.Printf("output message: %+v\n", msg)
-	}
-	testLeaderFollowerPair(t, testController{reveal2: reveal2})
 }
