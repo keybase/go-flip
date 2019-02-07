@@ -222,7 +222,12 @@ func testLeader(t *testing.T, nFollowers int) {
 	require.NotNil(t, msg.Result.Bool)
 }
 
-func TestLeaderFollowerPair(t *testing.T) {
+type testController struct {
+	dropReveal1 func(t *testing.T, b *testBundle, c *testBundle)
+	dropReveal2 func(t *testing.T, b *testBundle, c *testBundle)
+}
+
+func testLeaderFollowerPair(t *testing.T, testController testController) {
 	ctx := context.Background()
 
 	// The leader's state machine
@@ -317,8 +322,19 @@ func TestLeaderFollowerPair(t *testing.T) {
 	verifyMyReveal(b)
 	verifyMyReveal(c)
 
+	if testController.dropReveal1 != nil {
+		testController.dropReveal1(t, b, c)
+		return
+	}
+
 	err = c.dealer.InjectIncomingChat(ctx, rB.Sender, rB.Body)
 	require.NoError(t, err)
+
+	if testController.dropReveal2 != nil {
+		testController.dropReveal2(t, b, c)
+		return
+	}
+
 	err = b.dealer.InjectIncomingChat(ctx, rC.Sender, rC.Body)
 	require.NoError(t, err)
 
@@ -329,4 +345,8 @@ func TestLeaderFollowerPair(t *testing.T) {
 	resC := getResult(c)
 	fmt.Printf("RES %s\n", resB.String())
 	require.Equal(t, 0, resB.Cmp(resC))
+}
+
+func TestLeaderFollowerPair(t *testing.T) {
+	testLeaderFollowerPair(t, testController{})
 }
