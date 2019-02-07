@@ -197,4 +197,7 @@ func TestLeader(t *testing.T) {
 	b.assertOutgoingChatSent(t, MessageType_REVEAL)
 	b.receiveRevealFrom(t, leader)
 	b.runFollowersReveal(ctx, t)
+	msg = <-b.dealer.UpdateCh()
+	require.NotNil(t, msg.Result)
+	require.NotNil(t, msg.Result.Bool)
 }
