@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+// GameMessageEncoded is a game message that is shipped over the chat channel. Inside, it's a base64-encoded
+// msgpack object (generated via AVDL->go compiler), but it's safe to think of it just as an opaque string.
 type GameMessageEncoded string
 
 type GameMessageWrappedEncoded struct {
