@@ -80,8 +80,8 @@ type testBundle struct {
 	dealer    *Dealer
 	channelID ChannelID
 	start     Start
-	leader    *PlayerControl
-	followers []*PlayerControl
+	leader    *playerControl
+	followers []*playerControl
 }
 
 func (b *testBundle) run(ctx context.Context) {
@@ -132,27 +132,27 @@ func (b *testBundle) runFollowersReveal(ctx context.Context, t *testing.T) {
 	}
 }
 
-func (b *testBundle) sendReveal(ctx context.Context, t *testing.T, p *PlayerControl) {
+func (b *testBundle) sendReveal(ctx context.Context, t *testing.T, p *playerControl) {
 	msg, err := NewGameMessageBodyWithReveal(p.secret).Encode(p.md)
 	require.NoError(t, err)
 	b.dealer.InjectIncomingChat(ctx, p.me, p.md.ChannelID, msg)
 	b.receiveRevealFrom(t, p)
 }
 
-func (b *testBundle) sendCommitment(ctx context.Context, t *testing.T, p *PlayerControl) {
+func (b *testBundle) sendCommitment(ctx context.Context, t *testing.T, p *playerControl) {
 	msg, err := NewGameMessageBodyWithCommitment(p.commitment).Encode(p.md)
 	require.NoError(t, err)
 	b.dealer.InjectIncomingChat(ctx, p.me, p.md.ChannelID, msg)
 	b.receiveCommitmentFrom(t, p)
 }
 
-func (b *testBundle) receiveCommitmentFrom(t *testing.T, p *PlayerControl) {
+func (b *testBundle) receiveCommitmentFrom(t *testing.T, p *playerControl) {
 	res := <-b.dealer.UpdateCh()
 	require.NotNil(t, res.Commitment)
 	require.Equal(t, p.me, *res.Commitment)
 }
 
-func (b *testBundle) receiveRevealFrom(t *testing.T, p *PlayerControl) {
+func (b *testBundle) receiveRevealFrom(t *testing.T, p *playerControl) {
 	res := <-b.dealer.UpdateCh()
 	require.NotNil(t, res.Reveal)
 	require.Equal(t, p.me, *res.Reveal)

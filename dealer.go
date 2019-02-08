@@ -21,7 +21,7 @@ type GameMessageWrappedEncoded struct {
 type GameMessageWrapped struct {
 	Sender  UserDevice
 	Msg     GameMessageV1
-	Me      *PlayerControl
+	Me      *playerControl
 	Forward bool
 }
 
@@ -105,7 +105,7 @@ type Game struct {
 	gameUpdateCh    chan GameStateUpdateMessage
 	nPlayers        int
 	dealer          *Dealer
-	me              *PlayerControl
+	me              *playerControl
 }
 
 type GamePlayerState struct {
@@ -689,7 +689,7 @@ func (d *Dealer) stopGames() {
 	}
 }
 
-type PlayerControl struct {
+type playerControl struct {
 	me         UserDevice
 	md         GameMetadata
 	secret     Secret
@@ -698,7 +698,7 @@ type PlayerControl struct {
 	dealer     *Dealer
 }
 
-func (d *Dealer) newPlayerControl(me UserDevice, md GameMetadata, start Start) (*PlayerControl, error) {
+func (d *Dealer) newPlayerControl(me UserDevice, md GameMetadata, start Start) (*playerControl, error) {
 	secret := GenerateSecret()
 	cp := CommitmentPayload{
 		V: Version_V1,
@@ -712,7 +712,7 @@ func (d *Dealer) newPlayerControl(me UserDevice, md GameMetadata, start Start) (
 	if err != nil {
 		return nil, err
 	}
-	return &PlayerControl{
+	return &playerControl{
 		me:         me,
 		md:         md,
 		secret:     secret,
@@ -722,11 +722,11 @@ func (d *Dealer) newPlayerControl(me UserDevice, md GameMetadata, start Start) (
 	}, nil
 }
 
-func (p *PlayerControl) GameMetadata() GameMetadata {
+func (p *playerControl) GameMetadata() GameMetadata {
 	return p.md
 }
 
-func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc *PlayerControl, err error) {
+func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc *playerControl, err error) {
 	md := GameMetadata{
 		Initiator: d.dh.Me(),
 		ChannelID: chid,
@@ -747,11 +747,11 @@ func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc
 	return pc, nil
 }
 
-func (d *Dealer) sendCommitment(ctx context.Context, md GameMetadata, pc *PlayerControl) error {
+func (d *Dealer) sendCommitment(ctx context.Context, md GameMetadata, pc *playerControl) error {
 	return d.sendOutgoingChat(ctx, md, nil, NewGameMessageBodyWithCommitment(pc.commitment))
 }
 
-func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *PlayerControl, body GameMessageBody) error {
+func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *playerControl, body GameMessageBody) error {
 
 	gmw := GameMessageWrapped{
 		Sender:  d.dh.Me(),
