@@ -5,6 +5,7 @@ import (
 	"fmt"
 	clockwork "github.com/keybase/clockwork"
 	"github.com/stretchr/testify/require"
+	"math/big"
 	"testing"
 	"time"
 )
@@ -136,6 +137,16 @@ func (c *chatClient) consumeReveal(t *testing.T) {
 	require.NotNil(t, msg.Reveal)
 }
 
+func (c *chatClient) consumeResult(t *testing.T, r **big.Int) {
+	msg := <-c.dealer.UpdateCh()
+	require.NotNil(t, msg.Result)
+	require.NotNil(t, msg.Result.Big)
+	if *r == nil {
+		*r = msg.Result.Big
+	}
+	require.Equal(t, 0, msg.Result.Big.Cmp(*r))
+}
+
 func (c *chatClient) stop() {
 	close(c.shutdownCh)
 }
@@ -163,4 +174,6 @@ func TestChat(t *testing.T) {
 	srv.clock.Advance(time.Duration(6001) * time.Millisecond)
 	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, n) })
 	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeReveal(t) }) })
+	var b *big.Int
+	forAllClients(clients, func(c *chatClient) { c.consumeResult(t, &b) })
 }
