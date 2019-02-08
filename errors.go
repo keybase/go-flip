@@ -1,6 +1,7 @@
 package flip
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -233,3 +234,5 @@ type BadFlipTypeError struct {
 func (b BadFlipTypeError) Error() string {
 	return fmt.Sprintf("Bad flip type %d for game %s", b.T, b.G)
 }
+
+var ErrBadData = errors.New("rejecting bad data, likely due to a nil field")

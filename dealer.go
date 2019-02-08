@@ -29,6 +29,10 @@ func (g GameMetadata) String() string {
 	return string(g.ToKey())
 }
 
+func (g GameMetadata) check() bool {
+	return g.Initiator.check() && g.ConversationID.check() && g.GameID.check()
+}
+
 func (g gameMessageWrapped) GameMetadata() GameMetadata {
 	return g.Msg.Md
 }
@@ -39,6 +43,10 @@ type UserDeviceKey string
 
 func (u UserDevice) ToKey() UserDeviceKey {
 	return UserDeviceKey(strings.Join([]string{u.U.String(), u.D.String()}, ","))
+}
+
+func (u UserDevice) check() bool {
+	return u.U.check() && u.D.check()
 }
 
 func (g GameID) ToKey() GameIDKey {
@@ -100,6 +108,9 @@ func (e GameMessageEncoded) Decode() (*GameMessageV1, error) {
 		return nil, BadVersionError(v)
 	}
 	tmp := msg.V1()
+	if !tmp.Md.check() {
+		return nil, ErrBadData
+	}
 	return &tmp, nil
 }
 
@@ -580,6 +591,12 @@ func (d *Dealer) handleMessage(ctx context.Context, msg *gameMessageWrapped) err
 	switch t {
 	case MessageType_START:
 		err = d.handleMessageStart(ctx, msg, msg.Msg.Body.Start())
+		if err != nil {
+			d.gameUpdateCh <- GameStateUpdateMessage{
+				Metadata: msg.Msg.Md,
+				Err:      err,
+			}
+		}
 	default:
 		err = d.handleMessageOthers(ctx, msg)
 	}
@@ -648,10 +665,14 @@ func (p *playerControl) GameMetadata() GameMetadata {
 }
 
 func (d *Dealer) startFlip(ctx context.Context, start Start, conversationID ConversationID) (pc *playerControl, err error) {
+	return d.startFlipWithGameID(ctx, start, conversationID, GenerateGameID())
+}
+
+func (d *Dealer) startFlipWithGameID(ctx context.Context, start Start, conversationID ConversationID, gameID GameID) (pc *playerControl, err error) {
 	md := GameMetadata{
 		Initiator:      d.dh.Me(),
 		ConversationID: conversationID,
-		GameID:         GenerateGameID(),
+		GameID:         gameID,
 	}
 	pc, err = d.newPlayerControl(d.dh.Me(), md, start)
 	if err != nil {

@@ -56,3 +56,8 @@ func (s Start) CommitmentWindowWithSlack() time.Duration {
 func (s Start) RevealWindowWithSlack() time.Duration {
 	return Time(s.CommitmentWindowMsec + s.RevealWindowMsec + 2*s.SlackMsec).Duration()
 }
+
+func (c ConversationID) check() bool { return c != nil }
+func (u UID) check() bool            { return u != nil }
+func (d DeviceID) check() bool       { return d != nil }
+func (g GameID) check() bool         { return g != nil }
