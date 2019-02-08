@@ -108,6 +108,34 @@ func (s *chatServer) makeAndRunClients(ctx context.Context, nClients int) []*cha
 	return s.chatClients
 }
 
+func forAllClients(clients []*chatClient, f func(c *chatClient)) {
+	for _, cli := range clients {
+		f(cli)
+	}
+}
+
+func nTimes(n int, f func()) {
+	for i := 0; i < n; i++ {
+		f()
+	}
+}
+
+func (c *chatClient) consumeCommitment(t *testing.T) {
+	msg := <-c.dealer.UpdateCh()
+	require.NotNil(t, msg.Commitment)
+}
+
+func (c *chatClient) consumeCommitmentComplete(t *testing.T, n int) {
+	msg := <-c.dealer.UpdateCh()
+	require.NotNil(t, msg.CommitmentComplete)
+	require.Equal(t, n, len(msg.CommitmentComplete.Players))
+}
+
+func (c *chatClient) consumeReveal(t *testing.T) {
+	msg := <-c.dealer.UpdateCh()
+	require.NotNil(t, msg.Reveal)
+}
+
 func (c *chatClient) stop() {
 	close(c.shutdownCh)
 }
@@ -123,15 +151,16 @@ func TestChat(t *testing.T) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	clients := srv.makeAndRunClients(ctx, 10)
+	n := 10
+	clients := srv.makeAndRunClients(ctx, n)
 	defer srv.stopClients()
 
 	start := NewStartWithBigInt(srv.clock.Now(), pi())
 	channelID := ChannelID(randBytes(6))
 	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
+	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeCommitment(t) }) })
 	srv.clock.Advance(time.Duration(6001) * time.Millisecond)
-	for m := range clients[1].dealer.UpdateCh() {
-		fmt.Printf("M %+v\n", m)
-	}
+	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, n) })
+	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeReveal(t) }) })
 }
