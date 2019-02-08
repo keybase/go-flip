@@ -351,7 +351,6 @@ func testLeaderFollowerPair(t *testing.T, testController testController) {
 
 	resB := getResult(b)
 	resC := getResult(c)
-	fmt.Printf("RES %s\n", resB.String())
 	require.Equal(t, 0, resB.Cmp(resC))
 }
 

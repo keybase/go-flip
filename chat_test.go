@@ -165,12 +165,19 @@ func (c *chatServer) stopClients() {
 	}
 }
 
-func TestHappyChat(t *testing.T) {
+func TestHappyChat10(t *testing.T) {
+	testHappyChat(t, 10)
+}
+
+func TestHappyChat100(t *testing.T) {
+	testHappyChat(t, 100)
+}
+
+func testHappyChat(t *testing.T, n int) {
 	srv := newChatServer()
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	n := 10
 	clients := srv.makeAndRunClients(ctx, n)
 	defer srv.stopClients()
 
@@ -187,11 +194,19 @@ func TestHappyChat(t *testing.T) {
 }
 
 func TestSadChatOneAbsentee(t *testing.T) {
+	testSadAbsentees(t, 10, 1)
+}
+
+func TestSadChatFiveAbsentee(t *testing.T) {
+	testSadAbsentees(t, 20, 5)
+}
+
+func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
 	srv := newChatServer()
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	n := 10
+	n := nTotal
 	clients := srv.makeAndRunClients(ctx, n)
 	defer srv.stopClients()
 
@@ -199,14 +214,13 @@ func TestSadChatOneAbsentee(t *testing.T) {
 	channelID := ChannelID(randBytes(6))
 	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
+	present := nTotal - nAbstentees
 	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeCommitment(t) }) })
-	last := n - 1
-	absentee := clients[last]
-	absentee.dealer.Stop()
-	clients = clients[0:last]
+	forAllClients(clients[present:], func(c *chatClient) { c.dealer.Stop() })
+	clients = clients[0:present]
 	srv.clock.Advance(time.Duration(4001) * time.Millisecond)
 	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, n) })
-	forAllClients(clients, func(c *chatClient) { nTimes(last, func() { c.consumeReveal(t) }) })
+	forAllClients(clients, func(c *chatClient) { nTimes(present, func() { c.consumeReveal(t) }) })
 	srv.clock.Advance(time.Duration(31001) * time.Millisecond)
-	forAllClients(clients, func(c *chatClient) { c.consumeAbsteneesError(t, 1) })
+	forAllClients(clients, func(c *chatClient) { c.consumeAbsteneesError(t, nAbstentees) })
 }
