@@ -179,6 +179,11 @@ func (c *chatClient) consumeRevealsAndError(t *testing.T, nReveals int) {
 	require.True(t, revealsReceived <= nReveals)
 }
 
+func (c *chatClient) consumeTimeoutError(t *testing.T) {
+	msg := <-c.dealer.UpdateCh()
+	fmt.Printf("ERR %+v\n", msg)
+}
+
 func (c *chatClient) stop() {
 	close(c.shutdownCh)
 }
@@ -218,22 +223,26 @@ func testHappyChat(t *testing.T, n int) {
 }
 
 func TestSadChatOneAbsentee(t *testing.T) {
-	testSadAbsentees(t, 10, 1)
+	testAbsentees(t, 10, 1)
 }
 
 func TestSadChatFiveAbsentees(t *testing.T) {
-	testSadAbsentees(t, 20, 5)
+	testAbsentees(t, 20, 5)
 }
 
 func TestSadChatOneCorruption(t *testing.T) {
-	testSadCorruptions(t, 10, 1)
+	testCorruptions(t, 10, 1)
 }
 
 func TestSadChatFiveCorruptions(t *testing.T) {
-	testSadCorruptions(t, 30, 5)
+	testCorruptions(t, 30, 5)
 }
 
-func testSadAbsentees(t *testing.T, nTotal int, nAbsentees int) {
+func TestBadLeaderTenFollowers(t *testing.T) {
+	testBadLeader(t, 10)
+}
+
+func testAbsentees(t *testing.T, nTotal int, nAbsentees int) {
 	srv := newChatServer()
 	ctx := context.Background()
 	go srv.run(ctx)
@@ -260,7 +269,7 @@ func corruptBytes(b []byte) {
 	b[0] ^= 0x1
 }
 
-func testSadCorruptions(t *testing.T, nTotal int, nCorruptions int) {
+func testCorruptions(t *testing.T, nTotal int, nCorruptions int) {
 	srv := newChatServer()
 	ctx := context.Background()
 	go srv.run(ctx)
@@ -307,4 +316,22 @@ func testSadCorruptions(t *testing.T, nTotal int, nCorruptions int) {
 	srv.clock.Advance(time.Duration(4001) * time.Millisecond)
 	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, nTotal) })
 	forAllClients(clients[0:good], func(c *chatClient) { c.consumeRevealsAndError(t, good) })
+}
+
+func testBadLeader(t *testing.T, nTotal int) {
+	srv := newChatServer()
+	ctx := context.Background()
+	go srv.run(ctx)
+	defer srv.stop()
+	channelID := ChannelID(randBytes(6))
+	clients := srv.makeAndRunClients(ctx, channelID, nTotal)
+	defer srv.stopClients()
+
+	start := NewStartWithBigInt(srv.clock.Now(), pi())
+	err := clients[0].dealer.StartFlip(ctx, start, channelID)
+	require.NoError(t, err)
+	forAllClients(clients, func(c *chatClient) { nTimes(nTotal, func() { c.consumeCommitment(t) }) })
+	clients[0].dealer.Stop()
+	srv.clock.Advance(time.Duration(8001) * time.Millisecond)
+	forAllClients(clients[1:], func(c *chatClient) { c.consumeTimeoutError(t) })
 }
