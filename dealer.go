@@ -9,7 +9,14 @@ import (
 	"time"
 )
 
-func (m GameMessageWrapped) isForwardable() bool {
+type gameMessageWrapped struct {
+	Sender  UserDevice
+	Msg     GameMessageV1
+	Me      *playerControl
+	Forward bool
+}
+
+func (m gameMessageWrapped) isForwardable() bool {
 	t, _ := m.Msg.Body.T()
 	return t != MessageType_END
 }
@@ -22,7 +29,7 @@ func (g GameMetadata) String() string {
 	return string(g.ToKey())
 }
 
-func (g GameMessageWrapped) GameMetadata() GameMetadata {
+func (g gameMessageWrapped) GameMetadata() GameMetadata {
 	return g.Msg.Md
 }
 
@@ -52,7 +59,7 @@ type Game struct {
 	isLeader        bool
 	params          Start
 	key             GameKey
-	msgCh           <-chan *GameMessageWrapped
+	msgCh           <-chan *gameMessageWrapped
 	stage           Stage
 	stageForTimeout Stage
 	dh              DealersHelper
@@ -96,16 +103,16 @@ func (e GameMessageEncoded) Decode() (*GameMessageV1, error) {
 	return &tmp, nil
 }
 
-func (e *GameMessageWrappedEncoded) Decode() (*GameMessageWrapped, error) {
+func (e *GameMessageWrappedEncoded) Decode() (*gameMessageWrapped, error) {
 	v1, err := e.Body.Decode()
 	if err != nil {
 		return nil, err
 	}
-	ret := GameMessageWrapped{Sender: e.Sender, Msg: *v1}
+	ret := gameMessageWrapped{Sender: e.Sender, Msg: *v1}
 	return &ret, nil
 }
 
-func (w GameMessageWrapped) Encode() (GameMessageEncoded, error) {
+func (w gameMessageWrapped) Encode() (GameMessageEncoded, error) {
 	return w.Msg.Encode()
 }
 
@@ -263,7 +270,7 @@ func (g *Game) playerCommitedInTime(ps *GamePlayerState, now time.Time) bool {
 	return diff < g.params.CommitmentWindowWithSlack()
 }
 
-func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
+func (g *Game) handleMessage(ctx context.Context, msg *gameMessageWrapped) error {
 	t, err := msg.Msg.Body.T()
 	if err != nil {
 		return err
@@ -483,7 +490,7 @@ func (d *Dealer) primeHistory(ctx context.Context) (err error) {
 	return nil
 }
 
-func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped, start Start) error {
+func (d *Dealer) handleMessageStart(ctx context.Context, msg *gameMessageWrapped, start Start) error {
 	d.Lock()
 	defer d.Unlock()
 	md := msg.GameMetadata()
@@ -520,7 +527,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		isLeader = false
 	}
 
-	msgCh := make(chan *GameMessageWrapped)
+	msgCh := make(chan *gameMessageWrapped)
 	game := &Game{
 		md:              msg.GameMetadata(),
 		isLeader:        isLeader,
@@ -551,7 +558,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 	return nil
 }
 
-func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped) error {
+func (d *Dealer) handleMessageOthers(c context.Context, msg *gameMessageWrapped) error {
 	d.Lock()
 	defer d.Unlock()
 	md := msg.GameMetadata()
@@ -564,7 +571,7 @@ func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped)
 	return nil
 }
 
-func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
+func (d *Dealer) handleMessage(ctx context.Context, msg *gameMessageWrapped) error {
 
 	t, err := msg.Msg.Body.T()
 	if err != nil {
@@ -667,7 +674,7 @@ func (d *Dealer) sendCommitment(ctx context.Context, md GameMetadata, pc *player
 
 func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *playerControl, body GameMessageBody) error {
 
-	gmw := GameMessageWrapped{
+	gmw := gameMessageWrapped{
 		Sender:  d.dh.Me(),
 		Me:      me,
 		Forward: true,
