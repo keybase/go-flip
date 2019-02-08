@@ -19,16 +19,20 @@ func (p Player) key() string {
 // Player's name, his commitment, and his revealed preimage.
 type PlayerState struct {
 	Player     Player
-	Commitment Secret
+	Commitment *Commitment
 	Reveal     Secret
 }
 
-func checkReveal(c Secret, r Secret) bool {
-	return r.Hash().Eq(c)
+func checkReveal(cp CommitmentPayload, c Commitment, r Secret) bool {
+	commitment, err := r.computeCommitment(cp)
+	if err != nil {
+		return false
+	}
+	return commitment.Eq(c)
 }
 
-func checkPlayer(err *Error, player PlayerState) {
-	if player.Commitment.IsNil() {
+func checkPlayer(err *Error, cp CommitmentPayload, player PlayerState) {
+	if player.Commitment == nil {
 		err.addNoCommitment(player.Player)
 		return
 	}
@@ -37,7 +41,7 @@ func checkPlayer(err *Error, player PlayerState) {
 		return
 	}
 
-	if !checkReveal(player.Commitment, player.Reveal) {
+	if !checkReveal(cp, *player.Commitment, player.Reveal) {
 		err.addBadCommitment(player.Player)
 		return
 	}
@@ -45,11 +49,11 @@ func checkPlayer(err *Error, player PlayerState) {
 	return
 }
 
-func checkPlayers(player []PlayerState) error {
+func checkPlayers(cp CommitmentPayload, player []PlayerState) error {
 	var err Error
 	d := make(map[string]bool)
 	for _, p := range player {
-		checkPlayer(&err, p)
+		checkPlayer(&err, cp, p)
 		if d[p.Player.key()] {
 			err.addDuplicate(p.Player)
 		} else {
@@ -66,7 +70,7 @@ func checkPlayers(player []PlayerState) error {
 func computeSecret(players []PlayerState) Secret {
 	var res Secret
 	for _, p := range players {
-		res.XOR(p.Commitment)
+		res.XOR(p.Reveal)
 	}
 	return res
 }
@@ -74,8 +78,8 @@ func computeSecret(players []PlayerState) Secret {
 // Flip takes all the completed PlayerStates from the game, makes sure they don't have
 // an error, and if not, outputs a PRNG from which arbirarily many ints, or bools,
 // can be deterministically plucked. If there's an error, PRNG will be nil.
-func Flip(players []PlayerState) (*PRNG, error) {
-	err := checkPlayers(players)
+func Flip(cp CommitmentPayload, players []PlayerState) (*PRNG, error) {
+	err := checkPlayers(cp, players)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +90,8 @@ func Flip(players []PlayerState) (*PRNG, error) {
 // FlipOneBig takes all the completed PlayerStates, and checks them.  If no error,
 // then outputs one random number between 0 and the given modulus, which is an arbitrarily
 // big number. If there was an error in the game setup, then it will return nil and the error.
-func FlipOneBig(players []PlayerState, modulus *big.Int) (*big.Int, error) {
-	prng, err := Flip(players)
+func FlipOneBig(cp CommitmentPayload, players []PlayerState, modulus *big.Int) (*big.Int, error) {
+	prng, err := Flip(cp, players)
 	if err != nil {
 		return nil, err
 	}
@@ -97,8 +101,8 @@ func FlipOneBig(players []PlayerState, modulus *big.Int) (*big.Int, error) {
 // FlipOneInt takes all the completed PlayerStates, and checks them.  If no error,
 // then outputs one random number between 0 and the given modulus, a signed 64-bit int.
 // If there was an  error in the game setup, then it will return 0 and the error.
-func FlipInt(players []PlayerState, modulus int64) (int64, error) {
-	prng, err := Flip(players)
+func FlipInt(cp CommitmentPayload, players []PlayerState, modulus int64) (int64, error) {
+	prng, err := Flip(cp, players)
 	if err != nil {
 		return 0, err
 	}
@@ -108,8 +112,8 @@ func FlipInt(players []PlayerState, modulus int64) (int64, error) {
 // FlipOneBool takes all the completed PlayerStates, and checks them. If no error,
 // then outputs one random bool. If there was an error in the game setup, then it will
 // return false and the error.
-func FlipBool(players []PlayerState) (bool, error) {
-	prng, err := Flip(players)
+func FlipBool(cp CommitmentPayload, players []PlayerState) (bool, error) {
+	prng, err := Flip(cp, players)
 	if err != nil {
 		return false, err
 	}

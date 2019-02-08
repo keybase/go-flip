@@ -15,7 +15,11 @@ func (s *Secret) XOR(t Secret) *Secret {
 }
 
 func (s Secret) IsNil() bool {
-	for _, b := range s[:] {
+	return bytesAreNil(s[:])
+}
+
+func bytesAreNil(v []byte) bool {
+	for _, b := range v[:] {
 		if b != byte(0) {
 			return false
 		}
