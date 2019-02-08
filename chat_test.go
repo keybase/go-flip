@@ -15,6 +15,7 @@ type chatServer struct {
 	inputCh     chan GameMessageWrappedEncoded
 	chatClients []*chatClient
 	clock       clockwork.FakeClock
+	corruptor   func(GameMessageWrappedEncoded) GameMessageWrappedEncoded
 }
 
 type chatClient struct {
@@ -56,6 +57,9 @@ func (t *chatServer) run(ctx context.Context) {
 		case <-t.shutdownCh:
 			return
 		case msg := <-t.inputCh:
+			if t.corruptor != nil {
+				msg = t.corruptor(msg)
+			}
 			for _, cli := range t.chatClients {
 				if !cli.me.Eq(msg.Sender) {
 					cli.ch <- msg
@@ -155,6 +159,26 @@ func (c *chatClient) consumeResult(t *testing.T, r **big.Int) {
 	require.Equal(t, 0, msg.Result.Big.Cmp(*r))
 }
 
+func (c *chatClient) consumeRevealsAndError(t *testing.T, nReveals int) {
+	revealsReceived := 0
+	errorsReceived := 0
+	for errorsReceived == 0 {
+		fmt.Printf("[%s] waiting for msg....\n", c.me)
+		msg := <-c.dealer.UpdateCh()
+		fmt.Printf("[%s] msg gotten: %+v\n", c.me, msg)
+		switch {
+		case msg.Reveal != nil:
+			revealsReceived++
+		case msg.Err != nil:
+			errorsReceived++
+			require.IsType(t, BadRevealError{}, msg.Err)
+		default:
+			require.Fail(t, "unexpected msg type received: %+v", msg)
+		}
+	}
+	require.True(t, revealsReceived <= nReveals)
+}
+
 func (c *chatClient) stop() {
 	close(c.shutdownCh)
 }
@@ -197,11 +221,19 @@ func TestSadChatOneAbsentee(t *testing.T) {
 	testSadAbsentees(t, 10, 1)
 }
 
-func TestSadChatFiveAbsentee(t *testing.T) {
+func TestSadChatFiveAbsentees(t *testing.T) {
 	testSadAbsentees(t, 20, 5)
 }
 
-func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
+func TestSadChatOneCorruption(t *testing.T) {
+	testSadCorruptions(t, 10, 1)
+}
+
+func TestSadChatFiveCorruptions(t *testing.T) {
+	testSadCorruptions(t, 30, 5)
+}
+
+func testSadAbsentees(t *testing.T, nTotal int, nAbsentees int) {
 	srv := newChatServer()
 	ctx := context.Background()
 	go srv.run(ctx)
@@ -213,7 +245,7 @@ func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
 	start := NewStartWithBigInt(srv.clock.Now(), pi())
 	err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
-	present := nTotal - nAbstentees
+	present := nTotal - nAbsentees
 	forAllClients(clients, func(c *chatClient) { nTimes(nTotal, func() { c.consumeCommitment(t) }) })
 	forAllClients(clients[present:], func(c *chatClient) { c.dealer.Stop() })
 	clients = clients[0:present]
@@ -221,5 +253,58 @@ func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
 	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, nTotal) })
 	forAllClients(clients, func(c *chatClient) { nTimes(present, func() { c.consumeReveal(t) }) })
 	srv.clock.Advance(time.Duration(31001) * time.Millisecond)
-	forAllClients(clients, func(c *chatClient) { c.consumeAbsteneesError(t, nAbstentees) })
+	forAllClients(clients, func(c *chatClient) { c.consumeAbsteneesError(t, nAbsentees) })
+}
+
+func corruptBytes(b []byte) {
+	b[0] ^= 0x1
+}
+
+func testSadCorruptions(t *testing.T, nTotal int, nCorruptions int) {
+	srv := newChatServer()
+	ctx := context.Background()
+	go srv.run(ctx)
+	defer srv.stop()
+	channelID := ChannelID(randBytes(6))
+	clients := srv.makeAndRunClients(ctx, channelID, nTotal)
+	defer srv.stopClients()
+
+	good := nTotal - nCorruptions
+	isBad := func(u UserDevice) bool {
+		for i := good; i < nTotal; i++ {
+			if clients[i].me.Eq(u) {
+				return true
+			}
+		}
+		return false
+	}
+
+	srv.corruptor = func(m GameMessageWrappedEncoded) GameMessageWrappedEncoded {
+		w, err := m.Decode()
+		require.NoError(t, err)
+		body := w.Msg.Body
+		typ, err := body.T()
+		require.NoError(t, err)
+		if typ != MessageType_REVEAL {
+			return m
+		}
+		if !isBad(m.Sender) {
+			return m
+		}
+		reveal := body.Reveal()
+		corruptBytes(reveal[:])
+		w.Msg.Body = NewGameMessageBodyWithReveal(reveal)
+		enc, err := w.Encode()
+		require.NoError(t, err)
+		m.Body = enc
+		return m
+	}
+
+	start := NewStartWithBigInt(srv.clock.Now(), pi())
+	err := clients[0].dealer.StartFlip(ctx, start, channelID)
+	require.NoError(t, err)
+	forAllClients(clients, func(c *chatClient) { nTimes(nTotal, func() { c.consumeCommitment(t) }) })
+	srv.clock.Advance(time.Duration(4001) * time.Millisecond)
+	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, nTotal) })
+	forAllClients(clients[0:good], func(c *chatClient) { c.consumeRevealsAndError(t, good) })
 }

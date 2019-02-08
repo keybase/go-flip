@@ -177,11 +177,8 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 	err := <-doneCh
 
 	if err != nil {
-		d.dh.CLogf(ctx, "Error running game %s: %s", key, err.Error())
-		d.gameUpdateCh <- GameStateUpdateMessage{
-			Metadata: game.GameMetadata(),
-			Err:      err,
-		}
+		d.dh.CLogf(ctx, "[%s] Error running game %s: %s", d.dh.Me(), key, err.Error())
+
 	} else {
 		d.dh.CLogf(ctx, "Game %s ended cleanly", key)
 	}
@@ -475,6 +472,10 @@ func (g *Game) run(ctx context.Context) error {
 			return nil
 		}
 		if err != nil {
+			g.gameUpdateCh <- GameStateUpdateMessage{
+				Metadata: g.GameMetadata(),
+				Err:      err,
+			}
 			return err
 		}
 	}
