@@ -3,60 +3,11 @@ package flip
 import (
 	"context"
 	"encoding/base64"
-	clockwork "github.com/keybase/clockwork"
 	"io"
 	"math/big"
 	"strings"
-	"sync"
 	"time"
 )
-
-type GameMessageEncoded string
-
-type GameMessageWrappedEncoded struct {
-	Sender UserDevice
-	Body   GameMessageEncoded // base64-encoded GameMessaageBody that comes in over chat
-}
-
-type GameMessageWrapped struct {
-	Sender  UserDevice
-	Msg     GameMessageV1
-	Me      *playerControl
-	Forward bool
-}
-
-type DealersHelper interface {
-	CLogf(ctx context.Context, fmt string, args ...interface{})
-	Clock() clockwork.Clock
-	ServerTime(context.Context) (time.Time, error)
-	ReadHistory(ctx context.Context, since time.Time) ([]GameMessageWrappedEncoded, error)
-	SendChat(ctx context.Context, ch ConversationID, msg GameMessageEncoded) error
-	Me() UserDevice
-}
-
-type GameStateUpdateMessage struct {
-	Metadata GameMetadata
-	// only one of the following will be non-nil
-	Err                error
-	Commitment         *UserDevice
-	Reveal             *UserDevice
-	CommitmentComplete *CommitmentComplete
-	Result             *Result
-}
-
-type Dealer struct {
-	sync.Mutex
-	dh            DealersHelper
-	games         map[GameKey](chan<- *GameMessageWrapped)
-	shutdownCh    chan struct{}
-	chatInputCh   chan *GameMessageWrapped
-	gameUpdateCh  chan GameStateUpdateMessage
-	previousGames map[GameIDKey]bool
-}
-
-func (g GameMessageWrapped) GameMetadata() GameMetadata {
-	return g.Msg.Md
-}
 
 func (m GameMessageWrapped) isForwardable() bool {
 	t, _ := m.Msg.Body.T()
@@ -69,6 +20,10 @@ func (g GameMetadata) ToKey() GameKey {
 
 func (g GameMetadata) String() string {
 	return string(g.ToKey())
+}
+
+func (g GameMessageWrapped) GameMetadata() GameMetadata {
+	return g.Msg.Md
 }
 
 type GameKey string
@@ -639,48 +594,6 @@ func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) err
 	return nil
 }
 
-func NewDealer(dh DealersHelper) *Dealer {
-	return &Dealer{
-		dh:           dh,
-		games:        make(map[GameKey](chan<- *GameMessageWrapped)),
-		shutdownCh:   make(chan struct{}),
-		chatInputCh:  make(chan *GameMessageWrapped),
-		gameUpdateCh: make(chan GameStateUpdateMessage, 500),
-	}
-}
-
-func (d *Dealer) UpdateCh() <-chan GameStateUpdateMessage {
-	return d.gameUpdateCh
-}
-
-func (d *Dealer) Run(ctx context.Context) error {
-	for {
-		select {
-
-		case <-ctx.Done():
-			return ctx.Err()
-
-			// This channel never closes
-		case msg := <-d.chatInputCh:
-			err := d.handleMessage(ctx, msg)
-			if err != nil {
-				d.dh.CLogf(ctx, "Error reading message: %s", err.Error())
-			}
-
-			// exit the loop if we've shutdown
-		case <-d.shutdownCh:
-			return io.EOF
-
-		}
-	}
-	return nil
-}
-
-func (d *Dealer) Stop() {
-	close(d.shutdownCh)
-	d.stopGames()
-}
-
 func (d *Dealer) stopGames() {
 	d.Lock()
 	defer d.Unlock()
@@ -748,11 +661,6 @@ func (d *Dealer) startFlip(ctx context.Context, start Start, conversationID Conv
 	return pc, nil
 }
 
-func (d *Dealer) StartFlip(ctx context.Context, start Start, conversationID ConversationID) (err error) {
-	_, err = d.startFlip(ctx, start, conversationID)
-	return err
-}
-
 func (d *Dealer) sendCommitment(ctx context.Context, md GameMetadata, pc *playerControl) error {
 	return d.sendOutgoingChat(ctx, md, nil, NewGameMessageBodyWithCommitment(pc.commitment))
 }
@@ -775,21 +683,11 @@ func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *play
 	return nil
 }
 
-func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, conversationID ConversationID, body GameMessageEncoded) error {
-	gmwe := GameMessageWrappedEncoded{
-		Sender: sender,
-		Body:   body,
+func newStart(now time.Time) Start {
+	return Start{
+		StartTime:            ToTime(now),
+		CommitmentWindowMsec: 3 * 1000,
+		RevealWindowMsec:     30 * 1000,
+		SlackMsec:            1 * 1000,
 	}
-	msg, err := gmwe.Decode()
-	if err != nil {
-		return err
-	}
-	if !msg.Msg.Md.ConversationID.Eq(conversationID) {
-		return BadChannelError{G: msg.Msg.Md, C: conversationID}
-	}
-	if !msg.isForwardable() {
-		return UnforwardableMessageError{G: msg.Msg.Md}
-	}
-	d.chatInputCh <- msg
-	return nil
 }
