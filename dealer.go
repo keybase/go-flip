@@ -3,7 +3,6 @@ package flip
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
 	clockwork "github.com/keybase/clockwork"
 	"io"
 	"math/big"
@@ -297,7 +296,7 @@ func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
 	case FlipType_SHUFFLE:
 		res.Shuffle = prng.Permutation(int(params.Shuffle()))
 	default:
-		return fmt.Errorf("unknown flip type: %s", t)
+		return BadFlipTypeError{G: g.GameMetadata(), T: t}
 	}
 
 	g.gameUpdateCh <- GameStateUpdateMessage{
@@ -410,7 +409,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		}
 
 	default:
-		return fmt.Errorf("bad message type: %d", t)
+		return BadMessageError{G: g.GameMetadata()}
 	}
 
 	return nil
@@ -783,8 +782,7 @@ func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, chid
 		return BadChannelError{G: msg.Msg.Md, C: chid}
 	}
 	if !msg.isForwardable() {
-		// TODO: right error type
-		return fmt.Errorf("cannot inject an unforwardable message")
+		return UnforwardableMessageError{G: msg.Msg.Md}
 	}
 	d.chatInputCh <- msg
 	return nil

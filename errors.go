@@ -207,3 +207,29 @@ type BadChannelError struct {
 func (b BadChannelError) Error() string {
 	return fmt.Sprintf("Data for game %s came in on wrong channel (%s)", b.G, b.C)
 }
+
+type UnforwardableMessageError struct {
+	G GameMetadata
+}
+
+func (u UnforwardableMessageError) Error() string {
+	return fmt.Sprintf("Refusing to forwarda mesasge that isn't forwardable (%s)", u.G)
+}
+
+type BadMessageError struct {
+	G GameMetadata
+	T MessageType
+}
+
+func (b BadMessageError) Error() string {
+	return fmt.Sprintf("Bad message of type %d received for game %s", b.T, b.G)
+}
+
+type BadFlipTypeError struct {
+	G GameMetadata
+	T FlipType
+}
+
+func (b BadFlipTypeError) Error() string {
+	return fmt.Sprintf("Bad flip type %d for game %s", b.T, b.G)
+}
