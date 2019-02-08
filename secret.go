@@ -53,7 +53,6 @@ func (s Secret) computeCommitment(cp CommitmentPayload) (Commitment, error) {
 	if err != nil {
 		return ret, err
 	}
-	fmt.Printf("%#x\n", raw)
 	hm.Write(raw)
 	tmp := hm.Sum(nil)
 	copy(ret[:], tmp)

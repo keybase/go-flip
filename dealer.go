@@ -51,7 +51,7 @@ type Dealer struct {
 	games         map[GameKey](chan<- *GameMessageWrapped)
 	shutdownCh    chan struct{}
 	chatInputCh   chan *GameMessageWrapped
-	gameOutputCh  chan GameStateUpdateMessage
+	gameUpdateCh  chan GameStateUpdateMessage
 	previousGames map[GameIDKey]bool
 }
 
@@ -103,7 +103,7 @@ type Game struct {
 	stageForTimeout Stage
 	dh              DealersHelper
 	players         map[UserDeviceKey]*GamePlayerState
-	gameOutputCh    chan GameStateUpdateMessage
+	gameUpdateCh    chan GameStateUpdateMessage
 	nPlayers        int
 	dealer          *Dealer
 	me              *PlayerControl
@@ -179,7 +179,7 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 
 	if err != nil {
 		d.dh.CLogf(ctx, "Error running game %s: %s", key, err.Error())
-		d.gameOutputCh <- GameStateUpdateMessage{
+		d.gameUpdateCh <- GameStateUpdateMessage{
 			Metadata: game.GameMetadata(),
 			Err:      err,
 		}
@@ -195,8 +195,10 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 	}
 
 	d.Lock()
-	close(d.games[key])
-	delete(d.games, key)
+	if ch := d.games[key]; ch != nil {
+		close(ch)
+		delete(d.games, key)
+	}
 	d.Unlock()
 }
 
@@ -298,7 +300,7 @@ func (g *Game) doFlip(ctx context.Context, prng *PRNG) error {
 		return fmt.Errorf("unknown flip type: %s", t)
 	}
 
-	g.gameOutputCh <- GameStateUpdateMessage{
+	g.gameUpdateCh <- GameStateUpdateMessage{
 		Metadata: g.GameMetadata(),
 		Result:   &res,
 	}
@@ -339,7 +341,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 			commitment:     msg.Msg.Body.Commitment(),
 			commitmentTime: g.dh.Clock().Now(),
 		}
-		g.gameOutputCh <- GameStateUpdateMessage{
+		g.gameUpdateCh <- GameStateUpdateMessage{
 			Metadata:   g.GameMetadata(),
 			Commitment: &msg.Sender,
 		}
@@ -371,7 +373,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		}
 		g.stage = Stage_ROUND2
 		g.stageForTimeout = Stage_ROUND2
-		g.gameOutputCh <- GameStateUpdateMessage{
+		g.gameUpdateCh <- GameStateUpdateMessage{
 			Metadata:           g.GameMetadata(),
 			CommitmentComplete: &cc,
 		}
@@ -397,7 +399,7 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		if err != nil {
 			return err
 		}
-		g.gameOutputCh <- GameStateUpdateMessage{
+		g.gameUpdateCh <- GameStateUpdateMessage{
 			Metadata: g.GameMetadata(),
 			Reveal:   &msg.Sender,
 		}
@@ -405,23 +407,6 @@ func (g *Game) handleMessage(ctx context.Context, msg *GameMessageWrapped) error
 		g.nPlayers--
 		if g.nPlayers == 0 {
 			return g.finishGame(ctx)
-		}
-
-	case MessageType_ERROR:
-		ee := msg.Msg.Body.Error()
-		t, err := ee.T()
-		if err != nil {
-			return err
-		}
-		switch t {
-		case ErrorType_ABSENTEES:
-			g.gameOutputCh <- GameStateUpdateMessage{
-				Metadata: g.GameMetadata(),
-				Err: AbsenteesError{
-					Ours:    g.absentees(),
-					Leaders: ee.Absentees(),
-				},
-			}
 		}
 
 	default:
@@ -452,14 +437,6 @@ func (g *Game) absentees() []UserDevice {
 	return bad
 }
 
-func (g *Game) leadflipFailed(ctx context.Context) error {
-	g.stageForTimeout = Stage_ROUND_CLEANUP
-	err := NewExportedErrorWithAbsentees(g.absentees())
-	body := NewGameMessageBodyWithError(err)
-	g.sendOutgoingChat(ctx, body)
-	return nil
-}
-
 func (g *Game) sendOutgoingChat(ctx context.Context, body GameMessageBody) {
 	// Call back into the dealer, to reroute a message back into our
 	// game, but do so in a Go routine so we don't deadlock. There could be
@@ -469,14 +446,14 @@ func (g *Game) sendOutgoingChat(ctx context.Context, body GameMessageBody) {
 }
 
 func (g *Game) handleTimerEvent(ctx context.Context) error {
-	if g.isLeader {
-		switch g.stageForTimeout {
-		case Stage_ROUND1:
-			return g.completeCommitments(ctx)
-		case Stage_ROUND2:
-			return g.leadflipFailed(ctx)
-		}
+	if g.isLeader && g.stageForTimeout == Stage_ROUND1 {
+		return g.completeCommitments(ctx)
 	}
+
+	if g.stageForTimeout == Stage_ROUND2 {
+		return AbsenteesError{Absentees: g.absentees()}
+	}
+
 	return TimeoutError{G: g.md, Stage: g.stageForTimeout}
 }
 
@@ -489,7 +466,7 @@ func (g *Game) run(ctx context.Context) error {
 			err = g.handleTimerEvent(ctx)
 		case msg, ok := <-g.msgCh:
 			if !ok {
-				return GameShutdownError{G:g.GameMetadata()}
+				return GameShutdownError{G: g.GameMetadata()}
 			}
 			err = g.handleMessage(ctx, msg)
 		case <-ctx.Done():
@@ -600,7 +577,7 @@ func (d *Dealer) handleMessageStart(ctx context.Context, msg *GameMessageWrapped
 		stage:           Stage_ROUND1,
 		stageForTimeout: Stage_ROUND1,
 		dh:              d.dh,
-		gameOutputCh:    d.gameOutputCh,
+		gameUpdateCh:    d.gameUpdateCh,
 		players:         make(map[UserDeviceKey]*GamePlayerState),
 		dealer:          d,
 		me:              me,
@@ -633,7 +610,6 @@ func (d *Dealer) handleMessageOthers(c context.Context, msg *GameMessageWrapped)
 }
 
 func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) error {
-	fmt.Printf("handleMessage %+v\n", *msg)
 
 	t, err := msg.Msg.Body.T()
 	if err != nil {
@@ -660,9 +636,6 @@ func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) err
 	if err != nil {
 		return err
 	}
-	if t == MessageType_ERROR {
-		return msg.Msg.Body.Error()
-	}
 	return nil
 }
 
@@ -672,12 +645,12 @@ func NewDealer(dh DealersHelper) *Dealer {
 		games:        make(map[GameKey](chan<- *GameMessageWrapped)),
 		shutdownCh:   make(chan struct{}),
 		chatInputCh:  make(chan *GameMessageWrapped),
-		gameOutputCh: make(chan GameStateUpdateMessage, 500),
+		gameUpdateCh: make(chan GameStateUpdateMessage, 500),
 	}
 }
 
 func (d *Dealer) UpdateCh() <-chan GameStateUpdateMessage {
-	return d.gameOutputCh
+	return d.gameUpdateCh
 }
 
 func (d *Dealer) Run(ctx context.Context) error {

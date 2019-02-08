@@ -3,7 +3,6 @@ package flip
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	clockwork "github.com/keybase/clockwork"
 	"github.com/stretchr/testify/require"
@@ -47,7 +46,6 @@ func (t *testDealersHelper) Me() UserDevice {
 }
 
 func (t *testDealersHelper) SendChat(ctx context.Context, chid ChannelID, msg GameMessageEncoded) error {
-	fmt.Printf("Sending chat %s <- %s\n", hex.EncodeToString(chid), msg)
 	t.ch <- GameMessageWrappedEncoded{Body: msg, Sender: t.me}
 	return nil
 }
