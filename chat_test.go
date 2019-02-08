@@ -157,7 +157,7 @@ func (c *chatServer) stopClients() {
 	}
 }
 
-func TestChat(t *testing.T) {
+func TestHappyChat(t *testing.T) {
 	srv := newChatServer()
 	ctx := context.Background()
 	go srv.run(ctx)
@@ -171,9 +171,38 @@ func TestChat(t *testing.T) {
 	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
 	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeCommitment(t) }) })
-	srv.clock.Advance(time.Duration(6001) * time.Millisecond)
+	srv.clock.Advance(time.Duration(4001) * time.Millisecond)
 	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, n) })
 	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeReveal(t) }) })
 	var b *big.Int
 	forAllClients(clients, func(c *chatClient) { c.consumeResult(t, &b) })
+}
+
+func TestOneAbsentee(t *testing.T) {
+	srv := newChatServer()
+	ctx := context.Background()
+	go srv.run(ctx)
+	defer srv.stop()
+	n := 10
+	clients := srv.makeAndRunClients(ctx, n)
+	defer srv.stopClients()
+
+	start := NewStartWithBigInt(srv.clock.Now(), pi())
+	channelID := ChannelID(randBytes(6))
+	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
+	require.NoError(t, err)
+	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeCommitment(t) }) })
+	last := n-1
+	absentee := clients[last]
+	absentee.dealer.Stop()
+	clients = clients[0:last]
+	srv.clock.Advance(time.Duration(4001) * time.Millisecond)
+	fmt.Printf("A\n")
+	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, n) })
+	fmt.Printf("B\n")
+	forAllClients(clients, func(c *chatClient) { nTimes(last, func() { c.consumeReveal(t) }) })
+	fmt.Printf("C\n")
+	srv.clock.Advance(time.Duration(31001) * time.Millisecond)
+	msg := <- clients[0].dealer.UpdateCh()
+	fmt.Printf("the end: %+v\n", msg)
 }

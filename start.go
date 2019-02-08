@@ -8,8 +8,8 @@ import (
 func newStart(now time.Time) Start {
 	return Start{
 		StartTime:            ToTime(now),
-		CommitmentWindowMsec: 5 * 1000,
-		RevealWindowMsec:     10 * 1000,
+		CommitmentWindowMsec: 3 * 1000,
+		RevealWindowMsec:     30 * 1000,
 		SlackMsec:            1 * 1000,
 	}
 }

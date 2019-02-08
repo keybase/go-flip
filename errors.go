@@ -196,3 +196,11 @@ type AbsenteesError struct {
 func (l AbsenteesError) Error() string {
 	return fmt.Sprintf("Flip failed! Some users didn't reveal in time (%+v) (%+v)", l.Ours, l.Leaders)
 }
+
+type GameShutdownError struct {
+	G GameMetadata
+}
+
+func (g GameShutdownError) Error() string {
+	return fmt.Sprintf("Game was shutdown before it completed: %s", g.G)
+}

@@ -187,10 +187,17 @@ func (d *Dealer) run(ctx context.Context, game *Game) {
 		d.dh.CLogf(ctx, "Game %s ended cleanly", key)
 	}
 
+	// If the game was shutdown via the Dealer#Stop call, then
+	// don't close the channel (again) or remove the channel from the
+	// map, it's already dead.
+	if _, ok := err.(GameShutdownError); ok {
+		return
+	}
+
 	d.Lock()
-	defer d.Unlock()
 	close(d.games[key])
 	delete(d.games, key)
+	d.Unlock()
 }
 
 func (g *Game) getNextTimer() <-chan time.Time {
@@ -480,8 +487,13 @@ func (g *Game) run(ctx context.Context) error {
 		select {
 		case <-timer:
 			err = g.handleTimerEvent(ctx)
-		case msg := <-g.msgCh:
+		case msg, ok := <-g.msgCh:
+			if !ok {
+				return GameShutdownError{G:g.GameMetadata()}
+			}
 			err = g.handleMessage(ctx, msg)
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 		if err == io.EOF {
 			return nil
@@ -693,6 +705,16 @@ func (d *Dealer) Run(ctx context.Context) error {
 
 func (d *Dealer) Stop() {
 	close(d.shutdownCh)
+	d.stopGames()
+}
+
+func (d *Dealer) stopGames() {
+	d.Lock()
+	defer d.Unlock()
+	for k, ch := range d.games {
+		delete(d.games, k)
+		close(ch)
+	}
 }
 
 type PlayerControl struct {
