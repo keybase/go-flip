@@ -199,7 +199,7 @@ func testLeader(t *testing.T, nFollowers int) {
 	b := setupTestBundle(ctx, t)
 	b.run(ctx)
 	defer b.stop()
-	leader, err := b.dealer.StartFlip(ctx, b.start, b.channelID)
+	leader, err := b.dealer.startFlip(ctx, b.start, b.channelID)
 	require.NoError(t, err)
 	b.leader = leader
 	b.assertOutgoingChatSent(t, MessageType_START)
@@ -242,7 +242,7 @@ func testLeaderFollowerPair(t *testing.T, testController testController) {
 	b := setupTestBundleWithParams(ctx, t, NewFlipParametersWithBig(mb))
 	b.run(ctx)
 	defer b.stop()
-	_, err := b.dealer.StartFlip(ctx, b.start, b.channelID)
+	err := b.dealer.StartFlip(ctx, b.start, b.channelID)
 	require.NoError(t, err)
 
 	// The follower's state machine

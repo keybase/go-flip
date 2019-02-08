@@ -726,7 +726,7 @@ func (p *playerControl) GameMetadata() GameMetadata {
 	return p.md
 }
 
-func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc *playerControl, err error) {
+func (d *Dealer) startFlip(ctx context.Context, start Start, chid ChannelID) (pc *playerControl, err error) {
 	md := GameMetadata{
 		Initiator: d.dh.Me(),
 		ChannelID: chid,
@@ -745,6 +745,11 @@ func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (pc
 		return nil, err
 	}
 	return pc, nil
+}
+
+func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (err error) {
+	_, err = d.startFlip(ctx, start, chid)
+	return err
 }
 
 func (d *Dealer) sendCommitment(ctx context.Context, md GameMetadata, pc *playerControl) error {

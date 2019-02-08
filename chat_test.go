@@ -183,7 +183,7 @@ func testHappyChat(t *testing.T, n int) {
 	defer srv.stopClients()
 
 	start := NewStartWithBigInt(srv.clock.Now(), pi())
-	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
+	err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
 	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeCommitment(t) }) })
 	srv.clock.Advance(time.Duration(4001) * time.Millisecond)
@@ -211,7 +211,7 @@ func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
 	defer srv.stopClients()
 
 	start := NewStartWithBigInt(srv.clock.Now(), pi())
-	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
+	err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
 	present := nTotal - nAbstentees
 	forAllClients(clients, func(c *chatClient) { nTimes(nTotal, func() { c.consumeCommitment(t) }) })
