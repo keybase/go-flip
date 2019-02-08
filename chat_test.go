@@ -206,8 +206,7 @@ func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	n := nTotal
-	clients := srv.makeAndRunClients(ctx, n)
+	clients := srv.makeAndRunClients(ctx, nTotal)
 	defer srv.stopClients()
 
 	start := NewStartWithBigInt(srv.clock.Now(), pi())
@@ -215,11 +214,11 @@ func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
 	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
 	present := nTotal - nAbstentees
-	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeCommitment(t) }) })
+	forAllClients(clients, func(c *chatClient) { nTimes(nTotal, func() { c.consumeCommitment(t) }) })
 	forAllClients(clients[present:], func(c *chatClient) { c.dealer.Stop() })
 	clients = clients[0:present]
 	srv.clock.Advance(time.Duration(4001) * time.Millisecond)
-	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, n) })
+	forAllClients(clients, func(c *chatClient) { c.consumeCommitmentComplete(t, nTotal) })
 	forAllClients(clients, func(c *chatClient) { nTimes(present, func() { c.consumeReveal(t) }) })
 	srv.clock.Advance(time.Duration(31001) * time.Millisecond)
 	forAllClients(clients, func(c *chatClient) { c.consumeAbsteneesError(t, nAbstentees) })
