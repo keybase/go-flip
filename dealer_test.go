@@ -45,7 +45,7 @@ func (t *testDealersHelper) Me() UserDevice {
 	return t.me
 }
 
-func (t *testDealersHelper) SendChat(ctx context.Context, chid ChannelID, msg GameMessageEncoded) error {
+func (t *testDealersHelper) SendChat(ctx context.Context, conversationID ConversationID, msg GameMessageEncoded) error {
 	t.ch <- GameMessageWrappedEncoded{Body: msg, Sender: t.me}
 	return nil
 }
@@ -78,7 +78,7 @@ type testBundle struct {
 	me        UserDevice
 	dh        *testDealersHelper
 	dealer    *Dealer
-	channelID ChannelID
+	channelID ConversationID
 	start     Start
 	leader    *playerControl
 	followers []*playerControl
@@ -99,7 +99,7 @@ func setupTestBundleWithParams(ctx context.Context, t *testing.T, params FlipPar
 		SlackMsec:            1 * 1000,
 		Params:               params,
 	}
-	channelID := ChannelID(randBytes(6))
+	channelID := ConversationID(randBytes(6))
 
 	return &testBundle{
 		me:        me,
@@ -135,14 +135,14 @@ func (b *testBundle) runFollowersReveal(ctx context.Context, t *testing.T) {
 func (b *testBundle) sendReveal(ctx context.Context, t *testing.T, p *playerControl) {
 	msg, err := NewGameMessageBodyWithReveal(p.secret).Encode(p.md)
 	require.NoError(t, err)
-	b.dealer.InjectIncomingChat(ctx, p.me, p.md.ChannelID, msg)
+	b.dealer.InjectIncomingChat(ctx, p.me, p.md.ConversationID, msg)
 	b.receiveRevealFrom(t, p)
 }
 
 func (b *testBundle) sendCommitment(ctx context.Context, t *testing.T, p *playerControl) {
 	msg, err := NewGameMessageBodyWithCommitment(p.commitment).Encode(p.md)
 	require.NoError(t, err)
-	b.dealer.InjectIncomingChat(ctx, p.me, p.md.ChannelID, msg)
+	b.dealer.InjectIncomingChat(ctx, p.me, p.md.ConversationID, msg)
 	b.receiveCommitmentFrom(t, p)
 }
 

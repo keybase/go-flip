@@ -30,7 +30,7 @@ type DealersHelper interface {
 	Clock() clockwork.Clock
 	ServerTime(context.Context) (time.Time, error)
 	ReadHistory(ctx context.Context, since time.Time) ([]GameMessageWrappedEncoded, error)
-	SendChat(ctx context.Context, ch ChannelID, msg GameMessageEncoded) error
+	SendChat(ctx context.Context, ch ConversationID, msg GameMessageEncoded) error
 	Me() UserDevice
 }
 
@@ -64,7 +64,7 @@ func (m GameMessageWrapped) isForwardable() bool {
 }
 
 func (g GameMetadata) ToKey() GameKey {
-	return GameKey(strings.Join([]string{g.Initiator.U.String(), g.Initiator.D.String(), g.ChannelID.String(), g.GameID.String()}, ","))
+	return GameKey(strings.Join([]string{g.Initiator.U.String(), g.Initiator.D.String(), g.ConversationID.String(), g.GameID.String()}, ","))
 }
 
 func (g GameMetadata) String() string {
@@ -234,7 +234,7 @@ func (g Game) commitmentPayload() CommitmentPayload {
 		V: Version_V1,
 		U: g.md.Initiator.U,
 		D: g.md.Initiator.D,
-		C: g.md.ChannelID,
+		C: g.md.ConversationID,
 		G: g.md.GameID,
 		S: g.params.StartTime,
 	}
@@ -632,7 +632,7 @@ func (d *Dealer) handleMessage(ctx context.Context, msg *GameMessageWrapped) err
 	if err != nil {
 		return err
 	}
-	err = d.dh.SendChat(ctx, msg.Msg.Md.ChannelID, emsg)
+	err = d.dh.SendChat(ctx, msg.Msg.Md.ConversationID, emsg)
 	if err != nil {
 		return err
 	}
@@ -705,7 +705,7 @@ func (d *Dealer) newPlayerControl(me UserDevice, md GameMetadata, start Start) (
 		V: Version_V1,
 		U: md.Initiator.U,
 		D: md.Initiator.D,
-		C: md.ChannelID,
+		C: md.ConversationID,
 		G: md.GameID,
 		S: start.StartTime,
 	}
@@ -727,11 +727,11 @@ func (p *playerControl) GameMetadata() GameMetadata {
 	return p.md
 }
 
-func (d *Dealer) startFlip(ctx context.Context, start Start, chid ChannelID) (pc *playerControl, err error) {
+func (d *Dealer) startFlip(ctx context.Context, start Start, conversationID ConversationID) (pc *playerControl, err error) {
 	md := GameMetadata{
-		Initiator: d.dh.Me(),
-		ChannelID: chid,
-		GameID:    GenerateGameID(),
+		Initiator:      d.dh.Me(),
+		ConversationID: conversationID,
+		GameID:         GenerateGameID(),
 	}
 	pc, err = d.newPlayerControl(d.dh.Me(), md, start)
 	if err != nil {
@@ -748,8 +748,8 @@ func (d *Dealer) startFlip(ctx context.Context, start Start, chid ChannelID) (pc
 	return pc, nil
 }
 
-func (d *Dealer) StartFlip(ctx context.Context, start Start, chid ChannelID) (err error) {
-	_, err = d.startFlip(ctx, start, chid)
+func (d *Dealer) StartFlip(ctx context.Context, start Start, conversationID ConversationID) (err error) {
+	_, err = d.startFlip(ctx, start, conversationID)
 	return err
 }
 
@@ -775,7 +775,7 @@ func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *play
 	return nil
 }
 
-func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, chid ChannelID, body GameMessageEncoded) error {
+func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, conversationID ConversationID, body GameMessageEncoded) error {
 	gmwe := GameMessageWrappedEncoded{
 		Sender: sender,
 		Body:   body,
@@ -784,8 +784,8 @@ func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, chid
 	if err != nil {
 		return err
 	}
-	if !msg.Msg.Md.ChannelID.Eq(chid) {
-		return BadChannelError{G: msg.Msg.Md, C: chid}
+	if !msg.Msg.Md.ConversationID.Eq(conversationID) {
+		return BadChannelError{G: msg.Msg.Md, C: conversationID}
 	}
 	if !msg.isForwardable() {
 		return UnforwardableMessageError{G: msg.Msg.Md}

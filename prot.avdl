@@ -14,7 +14,7 @@ protocol flip {
   record UID {}
 
   @typedef("bytes")
-  record ChannelID {}
+  record ConversationID {}
 
   @typedef("bytes")
   record DeviceID {}
@@ -37,7 +37,7 @@ protocol flip {
 
   record GameMetadata {
     UserDevice initiator;
-    ChannelID channelID;
+    ConversationID conversationID;
     GameID gameID;
   }
 

@@ -36,9 +36,9 @@ func (o UID) DeepCopy() UID {
 	})(o)
 }
 
-type ChannelID []byte
+type ConversationID []byte
 
-func (o ChannelID) DeepCopy() ChannelID {
+func (o ConversationID) DeepCopy() ConversationID {
 	return (func(x []byte) []byte {
 		if x == nil {
 			return nil
@@ -89,16 +89,16 @@ func (o UserDevice) DeepCopy() UserDevice {
 }
 
 type GameMetadata struct {
-	Initiator UserDevice `codec:"initiator" json:"initiator"`
-	ChannelID ChannelID  `codec:"channelID" json:"channelID"`
-	GameID    GameID     `codec:"gameID" json:"gameID"`
+	Initiator      UserDevice     `codec:"initiator" json:"initiator"`
+	ConversationID ConversationID `codec:"conversationID" json:"conversationID"`
+	GameID         GameID         `codec:"gameID" json:"gameID"`
 }
 
 func (o GameMetadata) DeepCopy() GameMetadata {
 	return GameMetadata{
-		Initiator: o.Initiator.DeepCopy(),
-		ChannelID: o.ChannelID.DeepCopy(),
-		GameID:    o.GameID.DeepCopy(),
+		Initiator:      o.Initiator.DeepCopy(),
+		ConversationID: o.ConversationID.DeepCopy(),
+		GameID:         o.GameID.DeepCopy(),
 	}
 }
 

@@ -46,7 +46,7 @@ func (t *chatClient) Me() UserDevice {
 	return t.me
 }
 
-func (t *chatClient) SendChat(ctx context.Context, chid ChannelID, msg GameMessageEncoded) error {
+func (t *chatClient) SendChat(ctx context.Context, conversationID ConversationID, msg GameMessageEncoded) error {
 	t.server.inputCh <- GameMessageWrappedEncoded{Body: msg, Sender: t.me}
 	return nil
 }
@@ -93,7 +93,7 @@ func (s *chatServer) newClient() *chatClient {
 	return ret
 }
 
-func (c *chatClient) run(ctx context.Context, ch ChannelID) {
+func (c *chatClient) run(ctx context.Context, ch ConversationID) {
 	go c.dealer.Run(ctx)
 	for {
 		select {
@@ -105,7 +105,7 @@ func (c *chatClient) run(ctx context.Context, ch ChannelID) {
 	}
 }
 
-func (s *chatServer) makeAndRunClients(ctx context.Context, ch ChannelID, nClients int) []*chatClient {
+func (s *chatServer) makeAndRunClients(ctx context.Context, ch ConversationID, nClients int) []*chatClient {
 	for i := 0; i < nClients; i++ {
 		cli := s.newClient()
 		go cli.run(ctx, ch)
@@ -207,7 +207,7 @@ func testHappyChat(t *testing.T, n int) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	channelID := ChannelID(randBytes(6))
+	channelID := ConversationID(randBytes(6))
 	clients := srv.makeAndRunClients(ctx, channelID, n)
 	defer srv.stopClients()
 
@@ -247,7 +247,7 @@ func testAbsentees(t *testing.T, nTotal int, nAbsentees int) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	channelID := ChannelID(randBytes(6))
+	channelID := ConversationID(randBytes(6))
 	clients := srv.makeAndRunClients(ctx, channelID, nTotal)
 	defer srv.stopClients()
 
@@ -274,7 +274,7 @@ func testCorruptions(t *testing.T, nTotal int, nCorruptions int) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	channelID := ChannelID(randBytes(6))
+	channelID := ConversationID(randBytes(6))
 	clients := srv.makeAndRunClients(ctx, channelID, nTotal)
 	defer srv.stopClients()
 
@@ -323,7 +323,7 @@ func testBadLeader(t *testing.T, nTotal int) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	channelID := ChannelID(randBytes(6))
+	channelID := ConversationID(randBytes(6))
 	clients := srv.makeAndRunClients(ctx, channelID, nTotal)
 	defer srv.stopClients()
 

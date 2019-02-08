@@ -201,7 +201,7 @@ func (g GameShutdownError) Error() string {
 
 type BadChannelError struct {
 	G GameMetadata
-	C ChannelID
+	C ConversationID
 }
 
 func (b BadChannelError) Error() string {
