@@ -770,8 +770,7 @@ func (d *Dealer) sendOutgoingChat(ctx context.Context, md GameMetadata, me *Play
 	return nil
 }
 
-func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, body GameMessageEncoded) error {
-	// TODO: also include channel with the injection?
+func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, chid ChannelID, body GameMessageEncoded) error {
 	gmwe := GameMessageWrappedEncoded{
 		Sender: sender,
 		Body:   body,
@@ -779,6 +778,9 @@ func (d *Dealer) InjectIncomingChat(ctx context.Context, sender UserDevice, body
 	msg, err := gmwe.Decode()
 	if err != nil {
 		return err
+	}
+	if !msg.Msg.Md.ChannelID.Eq(chid) {
+		return BadChannelError{G: msg.Msg.Md, C: chid}
 	}
 	if !msg.isForwardable() {
 		// TODO: right error type

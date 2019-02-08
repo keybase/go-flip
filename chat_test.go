@@ -89,22 +89,22 @@ func (s *chatServer) newClient() *chatClient {
 	return ret
 }
 
-func (c *chatClient) run(ctx context.Context) {
+func (c *chatClient) run(ctx context.Context, ch ChannelID) {
 	go c.dealer.Run(ctx)
 	for {
 		select {
 		case <-c.shutdownCh:
 			return
 		case msg := <-c.ch:
-			c.dealer.InjectIncomingChat(ctx, msg.Sender, msg.Body)
+			c.dealer.InjectIncomingChat(ctx, msg.Sender, ch, msg.Body)
 		}
 	}
 }
 
-func (s *chatServer) makeAndRunClients(ctx context.Context, nClients int) []*chatClient {
+func (s *chatServer) makeAndRunClients(ctx context.Context, ch ChannelID, nClients int) []*chatClient {
 	for i := 0; i < nClients; i++ {
 		cli := s.newClient()
-		go cli.run(ctx)
+		go cli.run(ctx, ch)
 	}
 	return s.chatClients
 }
@@ -178,11 +178,11 @@ func testHappyChat(t *testing.T, n int) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	clients := srv.makeAndRunClients(ctx, n)
+	channelID := ChannelID(randBytes(6))
+	clients := srv.makeAndRunClients(ctx, channelID, n)
 	defer srv.stopClients()
 
 	start := NewStartWithBigInt(srv.clock.Now(), pi())
-	channelID := ChannelID(randBytes(6))
 	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
 	forAllClients(clients, func(c *chatClient) { nTimes(n, func() { c.consumeCommitment(t) }) })
@@ -206,11 +206,11 @@ func testSadAbsentees(t *testing.T, nTotal int, nAbstentees int) {
 	ctx := context.Background()
 	go srv.run(ctx)
 	defer srv.stop()
-	clients := srv.makeAndRunClients(ctx, nTotal)
+	channelID := ChannelID(randBytes(6))
+	clients := srv.makeAndRunClients(ctx, channelID, nTotal)
 	defer srv.stopClients()
 
 	start := NewStartWithBigInt(srv.clock.Now(), pi())
-	channelID := ChannelID(randBytes(6))
 	_, err := clients[0].dealer.StartFlip(ctx, start, channelID)
 	require.NoError(t, err)
 	present := nTotal - nAbstentees

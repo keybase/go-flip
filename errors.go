@@ -198,3 +198,12 @@ type GameShutdownError struct {
 func (g GameShutdownError) Error() string {
 	return fmt.Sprintf("Game was shutdown before it completed: %s", g.G)
 }
+
+type BadChannelError struct {
+	G GameMetadata
+	C ChannelID
+}
+
+func (b BadChannelError) Error() string {
+	return fmt.Sprintf("Data for game %s came in on wrong channel (%s)", b.G, b.C)
+}
